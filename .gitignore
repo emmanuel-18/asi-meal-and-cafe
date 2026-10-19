@@ -1,0 +1,53 @@
+﻿# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+
+# Employee and business data
+*.csv
+*.xlsx
+*.xls
+*.xlsm
+*.db
+*.sqlite
+*.sqlite3
+data/
+exports/
+backups/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node.js
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.npm-cache/
+
+# Build and tool artifacts
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local configuration
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
