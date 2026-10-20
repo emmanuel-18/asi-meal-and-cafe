@@ -1,0 +1,26 @@
+services:
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: ../../infra/web.Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: ../../infra/api.Dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in infra/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in infra/.env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in infra/.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

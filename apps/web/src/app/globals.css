@@ -1,0 +1,28 @@
+@import "@fontsource/cardo/400.css";
+@import "@fontsource/cardo/700.css";
+@import "@fontsource-variable/open-sans/wght.css";
+@import "tailwindcss";
+
+:root {
+  --background: #fffffa;
+  --foreground: #222222;
+  --primary: #160d76;
+  --secondary: #4094d9;
+  --accent: #f08530;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --font-sans: "Open Sans", Arial, sans-serif;
+  --font-serif: "Cardo", Georgia, serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Open Sans", Arial, sans-serif;
+}

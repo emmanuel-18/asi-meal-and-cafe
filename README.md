@@ -73,6 +73,29 @@ Financial reports must be traceable to the underlying transaction records.
 
 See [AGENTS.md](AGENTS.md) for the repository's engineering instructions.
 
+## Run locally with Docker Compose
+
+Install Docker with Compose, then copy `infra/.env.example` to `infra/.env`
+and set a PostgreSQL user, password, and database name. Keep this file private.
+From the repository root, run:
+
+```powershell
+docker compose --env-file infra/.env -f infra/compose.yaml up --build -d
+```
+
+The frontend is available at http://localhost:3000 and the API health endpoint
+at http://localhost:8000/health. PostgreSQL is accessible only to containers on
+the Compose network; its data persists in a named Docker volume. The current API
+does not yet connect to the database. To stop the services without removing the
+database volume, run:
+
+```powershell
+docker compose --env-file infra/.env -f infra/compose.yaml down
+```
+
+The database credentials initialize a new volume; changing them later does not
+update an existing database. This setup is for local development, not production.
+
 ## Development Status
 
 No business features are implemented yet. Do not use this project for
