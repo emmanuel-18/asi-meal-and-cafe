@@ -1,0 +1,24 @@
+Project ALignment and Buddy Up for upcoming Sales management project:
+
+
+raw minutes:I will be having new project, it's more like a sales management x inventory system. I need to brainstorm it with you to make this project smooth, maintaible, manageable, userfriendly, and ofcourse longterm where it less reliant to developer.
+
+
+Problem: One of the staff in company experiencing struggles in managing sales of daily food order by employee. The process was actually very easy but their manual process make it looks so hard, they even attempting now to hire an admin to help doing this repetitive task. So let me tell you more context:
+
+They usually only have 1 type of meal every week and its price is only 2 type 50 (without rice) and 75 (with rice). Just easy right?
+
+So the admin at morning will rounds to every room or thru chat to verify those agent who wants to order that day, then she will list them in the log book manually, since only one type of meal each day the only need is to list the name, position, campaign(department), mode of payment and weather 50 or 75, then the signature is later when they got an order already, usually at lunch time.  
+
+
+So we have lots of campaign some are different site and they list it all in logs manually, and since we have different site each site has assigned admin, 
+
+the hardest time consuming part is the inputing process where they transfer written order transaction from paper to their excel sheet fo all site for different admin, where aside from inputing they have different struggle like hard to read the handwritten names, verifications and a lot more, they do it each week and every week they also have consofile excel to prepare for their weekly report with some chart.
+
+
+
+Solution: instead of hiring new manpower to do this task and avoid overtime, they want to create a tool an app so the sale will be manage there directly like admin will just click 50 or 70 for each employee, dropdown to select campaign, position, and receive or not, where the app already have database name of employee they will just search it. So they also asking what possible proof to do if it was implemented as app is it still signature, a photo proof or your suggestion? the challenge is sometimes when lunch time there is a lot of employee received their order so it might husstle to take photos of each, so I need your suggestion also for this. So if this implemented manual log book will be remove and what's good is they can just export the report, conso or whaever file they usually need to submit we will just copy their formats of conso or report, they don't have to do manual input anymore.
+
+They prefer to user their tablet, or tablet with keyboard, or phone, then laptop as well 
+
+Did you get the vision of this app? or you need more clarifications to make it more crystal clear
