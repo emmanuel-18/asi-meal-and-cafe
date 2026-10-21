@@ -7,7 +7,8 @@ reference review in [Business workflow discovery](business-workflow-discovery.md
 **Confirmed** means an explicit owner requirement or existing project constraint.
 **Proposed** means a recommendation awaiting approval. **Unresolved** means a
 business decision is still required. Proposals are not approved implementation
-specifications or a final permission matrix.
+specifications. The initial two-role permissions below are confirmed; any
+remaining permission details are identified separately.
 
 ## 1. Purpose and business objectives
 
@@ -16,19 +17,19 @@ specifications or a final permission matrix.
 - **Confirmed:** Keep the workflow fast, simple, and usable on desktop, tablet,
   and mobile.
 
-## 2. Users and proposed roles
+## 2. Users and initial roles
 
-| Status | Role concept | Intended responsibility |
+| Status | Role | Initial permissions |
 | --- | --- | --- |
-| Proposed | Administrator | Routine permitted order and menu management. |
-| Proposed | Supervisor / designated privileged role | Sensitive corrections, such as reversing Received. |
-| Proposed | Monitoring role | Read-only access to permitted records and reports. |
+| Confirmed | Admin | Record/manage orders, menus and reusable dish catalog, and visitor records; select categories; mark/correct Received; view sales reports; manage user accounts/role assignments; view audit logs. |
+| Confirmed | Assistant Admin | Routine order, menu/catalog and visitor management; select categories; mark/correct Received; view reports. Cannot manage user accounts/role assignments or have unrestricted administrative security access. |
 
-- **Proposed:** Clearly define permissions by role or make them configurable,
-  without unnecessarily restricting ordinary administrative work.
-- **Unresolved:** Exact names, number of roles, site/record access, import/report
-  privileges, and action-level permissions. Not all administrators need identical
-  permissions.
+- **Confirmed:** Both roles use individual accounts, never shared accounts.
+  Keep permissions understandable without unnecessary routine-work restrictions.
+- **Proposed:** Keep role permissions clearly defined or configurable within
+  the confirmed initial model.
+- **Unresolved:** Site/record access, employee-import permissions, Assistant Admin
+  audit-view access, and specific administrative security permissions.
 
 ## 3. Scope and exclusions
 
@@ -95,10 +96,15 @@ Synthetic example: 2 vegetable meals + 1 non-vegetable meal + 3 extra rice =
 
 - **Confirmed:** Employee orders identify imported employees by employee number.
   Visitor meals must be supported separately from HRMS employees.
-- **Proposed:** Initially show fictional choices Visitor A, Visitor B, Visitor C.
+- **Confirmed:** Admin and Assistant Admin can create and reuse visitor records,
+  select an existing visitor on an order, and create a missing visitor without
+  unnecessarily leaving order entry.
 - **Confirmed:** Visitor meals are currently associated with Finance.
-- **Unresolved:** Generic visitor placeholders versus reusable records for actual
-  individual visitors. No final visitor identity design is approved.
+- **Confirmed:** Give each visitor a stable internal identifier so name changes
+  do not break historical records. Avoid duplicates where reasonably possible;
+  a visitor name alone is not guaranteed unique. Use fictional examples only.
+- **Unresolved:** Precise visitor fields and duplicate-handling behavior may be
+  refined during database design; no database design is performed here.
 
 ## 8. Payment categories
 
@@ -114,30 +120,40 @@ Synthetic example: 2 vegetable meals + 1 non-vegetable meal + 3 extra rice =
 - **Confirmed:** Staff record categories as an administrative recording/reminder
   function, not independent payment proof or external processing.
 - **Unresolved:** Mixed categories per order, incentive handling, category changes,
-  and how each category contributes to reconciliation.
+  and detailed report presentation for each category.
 
 ## 9. Receipt tracking and corrections
 
-- **Confirmed:** Record the category with the order. The owner states that an
-  employee pays before receiving the meal; staff mark Received on handover.
-- **Confirmed:** No separate Paid/Unpaid workflow initially unless later discovery
-  establishes a need.
-- **Confirmed:** Authorized staff must be able to undo an incorrect Received mark
-  while retaining its history.
-- **Proposed:** Apply role-based authority and audit logging; a supervisor or
-  designated privileged role handles sensitive reversals.
-- **Unresolved:** Exact permissions and mandatory-reason cases, other order
-  corrections, refunds/cancellations, and what payment before handover means for
-  SD, Incentive, and Finance. Received must not imply completed payroll deduction.
+- **Confirmed:** Staff record the employee or visitor, items, quantities, and
+  category; the system calculates the total. After meal handover and transaction
+  completion, Admin or Assistant Admin marks Received. The order is then
+  considered paid under ASI Meal's internal workflow, and the staff member
+  marking it is accountable. Record who marked it and when.
+- **Confirmed:** Do not introduce a separate Paid/Unpaid status. Received is
+  staff confirmation, not GCash verification, payroll/SD verification, or Finance
+  approval of external payment processing. Do not wait for Finance or payroll
+  before counting SD sales.
+- **Confirmed:** Both Admin and Assistant Admin may correct Received. Every
+  correction retains responsible user, timestamp, affected order, action, and
+  previous/new values; do not erase the original action.
+- **Proposed:** Require a correction reason where appropriate; mandatory cases
+  have not been approved.
+- **Unresolved:** Other order corrections and refunds/cancellations.
 
 ## 10. Audit logging
 
 - **Confirmed:** Consequential corrections retain verified actor, timestamp,
-  affected record, previous/new values, and reason where required. Never silently
+  affected record, action, previous/new values, and reason where required. Never silently
   erase correction history.
+- **Confirmed:** Log important actions: creating/updating orders; marking,
+  reversing, or correcting Received; creating/updating menus and visitors;
+  employee imports; and administrative user/role changes. Include actor, time,
+  affected record, action, and before/after values where applicable.
 - **Confirmed:** Maintain traceability between sales, payment-category records,
   and SD reports; prevent duplicate processing and inconsistent financial updates.
-- **Unresolved:** Exact reason requirements and access to audit records.
+- **Confirmed:** Admin can view audit logs.
+- **Proposed:** Require correction reasons where appropriate.
+- **Unresolved:** Mandatory-reason cases and Assistant Admin audit-view access.
 
 ## 11. Reports and exports
 
@@ -145,12 +161,21 @@ Synthetic example: 2 vegetable meals + 1 non-vegetable meal + 3 extra rice =
   reconciliation, and SD reports for daily, weekly, monthly, and custom ranges.
 - **Confirmed:** Preserve information needed by staff and Finance; exact copies
   of existing Excel layouts are not required.
-- **Confirmed:** Totals do not prove actual payments or completed payroll SD.
+- **Confirmed:** Sales are based on recorded meal orders and their applicable
+  prices, with corresponding recorded category totals. SD orders count toward
+  sales when recorded and may appear in SD reports before actual payroll
+  deduction. There is no payroll-processing or Finance-approval dependency.
+- **Confirmed:** Received means internally paid; payment-category reports describe
+  recorded transactions, not independently verified external payments. Totals
+  do not prove physical cash receipt, verified GCash, or completed payroll SD.
   Broken SD formulas and masked zero results are not valid business controls.
   The legacy cash-plus-SD reconciliation is not an approved rule for all categories.
 - **Proposed:** Clearly show periods/categories and trace totals to source transactions.
+- **Proposed:** An internal mathematical consistency check may compare recorded
+  order totals with corresponding category totals. Agreement does not verify
+  external payments; no additional Finance or external-verification workflow is added.
 - **Unresolved:** Official reporting/payroll cutoffs and range boundaries, columns,
-  export formats, recipients, full reconciliation logic, finalization, submission,
+  export formats, recipients, internal consistency details, finalization, submission,
   locking, and post-submission corrections.
 
 ## 12. Mock notifications
@@ -180,12 +205,12 @@ Synthetic example: 2 vegetable meals + 1 non-vegetable meal + 3 extra rice =
 - **Confirmed limitation:** All HRMS assigned-site values were blank. The CSV
   contained no explicit employment-status/SD-eligibility field; no additional
   eligibility restrictions are authorized.
-- **Unresolved:** Approve the menu proposal, visitor identity, organizational
+- **Unresolved:** Approve the menu proposal; refine visitor fields/duplicate handling, organizational
   mapping/import conflicts, additional menu items, ranking details, price timing,
   overrides, and duplicate-order handling.
-- **Unresolved:** Settle For Deposit, incentive/mixed categories, category-specific
-  handover expectations, complete reconciliation, and review responsibility.
-- **Unresolved:** Approve roles, correction reasons, report specifications,
+- **Unresolved:** Settle For Deposit, incentive/mixed categories, internal
+  consistency/report details, and review responsibility.
+- **Unresolved:** Refine remaining security/audit-view access, proposed correction reasons, report specifications,
   payroll cutoffs, and finalization/amendment rules before implementing them.
 
 ## 15. Acceptance criteria for a future implementation
@@ -202,11 +227,14 @@ approval; unresolved details must be settled before affected checks can pass.
 | AC-05 | Confirmed | Dish/menu/category/price edits leave historical sale details and report amounts unchanged. |
 | AC-06 | Confirmed | Quantity changes update line/order totals. The synthetic 2 vegetable + 1 non-vegetable + 3 extra rice order totals ₱220 at working prices. |
 | AC-07 | Confirmed | Approved categories are recorded accurately; For Deposit is not selectable. Selection claims neither verified GCash nor completed SD. |
-| AC-08 | Confirmed | Visitor orders are separate from HRMS employees and associated with Finance; final identity behavior awaits its business decision. |
-| AC-09 | Confirmed | Received can be marked and corrected only with applicable authority. Unauthorized reversals fail; permitted reversals retain actor/time/record/before/after and required reasons. The exact matrix/reason rules await approval. |
-| AC-10 | Confirmed | Sales, category, reconciliation, and SD reports support daily/weekly/monthly/custom ranges with traceable totals; official cutoffs and reconciliation definitions must be approved before validating results. |
+| AC-08 | Confirmed | Either role can select/reuse a visitor or create one within order entry. Visitor orders use Finance and remain separate from HRMS employees; name edits preserve stable identity and historical links, and names alone are not unique. Precise duplicate behavior remains unresolved. |
+| AC-09 | Confirmed | Both roles can mark/correct Received. Marking it records internally paid status without a separate Paid/Unpaid field, the accountable actor, and time. Corrections retain the original action and actor/time/order/action/before/after history. Other users cannot perform unauthorized changes. |
+| AC-10 | Confirmed | Sales, category, reconciliation, and SD reports support daily/weekly/monthly/custom ranges with traceable totals. A recorded SD order counts without payroll processing and may appear in SD reporting before deduction; official cutoffs/internal consistency details remain to be agreed. |
 | AC-11 | Confirmed | Mock notifications send no actual messages, connect to no provider, and display no false delivery success. |
 | AC-12 | Confirmed | Logs, samples, and documentation expose no employee PII or credentials; backend checks deny unauthorized protected operations. |
+| AC-13 | Confirmed | Each role uses an individual account. Both can perform confirmed routine operations and Received corrections; only Admin manages users/roles and has confirmed audit-view access. Assistant Admin cannot manage users/roles or gain unrestricted security-settings access. |
+| AC-14 | Confirmed | Important order, receipt, menu, visitor, import, and administrative user/role actions retain actor/time/record/action and applicable before/after values; corrections never erase the original audit history. |
+| AC-15 | Proposed | If correction reasons are approved, require and retain them for the agreed correction cases. |
 
 Next step: review with site staff and Finance, approve proposals and unresolved
 financial/access rules, then plan implementation.

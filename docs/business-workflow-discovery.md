@@ -27,29 +27,53 @@ more information is needed. Spreadsheet behavior is not automatically policy.
 3. **Record order and category — Confirmed, owner:** Transactions support
    multiple items and quantities with automatic totals. Staff record Cash,
    GCash, Salary Deduction (SD), Incentive (voucher/gift card), or Finance.
-   Visitor meals are separate from HRMS employees and associated with Finance.
-   **Unresolved:** Generic visitor placeholders versus reusable individual records.
+   Visitors are separate from HRMS employees and use Finance. Admin and Assistant
+   Admin can select reusable visitor records or create one within order entry.
+   Each visitor has a stable internal identifier; a name alone is not unique.
+   **Unresolved:** Precise visitor fields and duplicate-handling behavior.
 4. **Hand over meal — Confirmed:** Notes describe signatures on receipt, usually
-   at lunch. The owner confirms payment before handover and staff marking
-   Received when handed over. No separate Paid/Unpaid workflow is required
-   initially. Category selection is administrative and proves neither a GCash
-   transfer nor completed SD. **Unresolved:** What payment-before-handover means
-   for SD, Incentive, and Finance.
+   at lunch. Under the latest confirmed rule, after handover and completion of
+   the transaction, Admin or Assistant Admin marks Received: the order is then
+   considered paid for ASI Meal's internal records. The staff member is accountable;
+   record who marked it and when. There is no separate Paid/Unpaid status or wait
+   for Finance, GCash verification, or payroll completion. This internal
+   confirmation does not independently verify external transfers or deductions.
 5. **Prepare daily totals — Confirmed, records:** Staff transcribe paper orders
    into Excel. Quantities and payment labels are manual inputs; formulas compute
    employee-day amounts, item revenue, and category totals.
 6. **Reconcile — Confirmed, records:** The main sheet compares cash plus SD with
    item revenue, omitting other displayed categories. This is not an approved
-   general reconciliation rule. **Unresolved:** Cash counting, external evidence,
-   reviewers, discrepancy handling, and treatment of all categories.
+   general reconciliation rule. **Confirmed, owner:** Sales use recorded orders
+   and their applicable prices, with corresponding recorded category totals.
+   SD orders count when recorded and may appear in SD reports before payroll
+   deduction. A mathematical consistency check may compare these totals, but
+   matching amounts prove neither physical cash receipt nor external payment.
+   External verification and Finance processing are outside the current scope.
 7. **Consolidate and report — Confirmed:** Notes describe weekly consolidation;
    an employee-by-date SD template exists, but broken lookups prevent validation.
    The owner requires daily, weekly, monthly, and custom-range reports, preserving
    staff/Finance information rather than necessarily copying Excel layouts.
 8. **Correct mistakes — Confirmed, owner:** An incorrect Received mark must be
-   reversible without erasing history. **Proposed:** Role-based permissions and
-   audit logging, with a privileged role for sensitive corrections. Exact
-   permissions and other correction rules remain **Unresolved**.
+   reversible by both Admin and Assistant Admin without erasing the original
+   action. Log the responsible user, timestamp, affected order, action, and
+   before/after values. **Proposed:** Require correction reasons where appropriate.
+
+## Initial roles and accountability
+
+**Confirmed:** Admin and Assistant Admin use individual accounts, never shared
+accounts. Both record/manage orders, menus and the reusable dish catalog, visitor
+records, payment categories, Received marks/corrections, and view sales reports.
+Admin additionally manages user accounts and role assignments and views audit
+logs. Assistant Admin cannot manage users/roles or have unrestricted access to
+administrative security settings. Its audit-view access and specific security
+permissions remain **Unresolved**; routine operations should not be unnecessarily
+restricted.
+
+**Confirmed:** Audit important order creations/updates, Received marks/reversals,
+menu and visitor creations/updates, employee imports, and user/role changes.
+Capture actor, time, record, action, and before/after values where applicable.
+Preserve correction history. **Proposed:** Correction reasons where appropriate;
+the mandatory cases are not yet approved.
 
 ## Evidence and open questions
 
@@ -58,10 +82,10 @@ more information is needed. Spreadsheet behavior is not automatically policy.
 | Employees | Owner confirms HRMS CSV and employee-number identity. No invented eligibility filter. | Required import fields, organizational/site mapping, refresh and update/conflict handling. |
 | Menu | Owner confirms category prices including rice. Records also show hotsilog/cornsilog. | Are those legacy items still needed? Menu ranking counting/ties; price effective dates and overrides. |
 | Orders | Owner confirms multi-item quantities; workbook aggregates by employee-day. | Separate versus combined orders; duplicate handling. |
-| Visitors | Owner associates meals with Finance. Placeholder choices may initially be used. | Generic placeholders versus reusable individual identities. |
-| Categories | Owner confirms Cash, GCash, SD, Incentive, Finance. | For Deposit; mixed categories; incentive redemption and category-specific handover evidence. |
-| Receipt/corrections | Owner confirms Received and reversibility with retained history. | Exact role authority and mandatory correction reasons; other amendments. |
-| Reconciliation | Sample arithmetic agrees; this is not proof of actual money received. | Full category treatment, evidence, reviewers, and discrepancy handling. |
+| Visitors | Reusable visitor records, separate from employees, selected/created by either role; Finance category and stable internal IDs. | Precise fields and duplicate handling; names alone are not unique. |
+| Categories | Owner confirms Cash, GCash, SD, Incentive, Finance. | For Deposit; mixed categories; incentive handling. |
+| Receipt/corrections | Both roles can mark/correct Received; Received means internally paid, with staff accountability and retained audit history. | Proposed mandatory-reason cases; other amendments. |
+| Reconciliation | Internal order/category arithmetic only; SD counts when recorded, without payroll dependency. | Exact report presentation, internal reviewers, and discrepancy handling; no external verification workflow. |
 | Reports/SD | Reporting ranges confirmed; broken SD results are not reliable. | Official cutoffs, columns/formats, recipients, submission, finalization, locking, and later corrections. |
 
 ## Reference files previously inspected
@@ -83,15 +107,16 @@ transcription. Detailed sales campaign labels may correspond to HRMS line of
 business rather than HRMS campaign; mapping needs confirmation.
 
 Samples cover different periods and cannot establish a matching end-to-end
-reconciliation. A valid SD source, payment verification procedure, payroll handoff
-and completion evidence, and approved correction procedure remain unestablished.
+reconciliation. A valid SD source and report amendment procedures remain
+unestablished. External payment verification, payroll processing/verification,
+and Finance approval of external processing are outside the current scope, not
+prerequisites for recording sales.
 
 ## Decisions needed before implementation
 
-- Approve menu workflow, visitor identity, import mappings/conflict handling, and legacy item scope.
-- Clarify payment-before-handover by category without treating Received as payroll completion.
-- Settle For Deposit, full reconciliation, report specifications, and payroll cutoffs.
-- Approve role permissions, correction reasons, report finalization, and later amendments.
+- Approve menu workflow; refine visitor fields/duplicates, import mappings/conflicts, and legacy item scope.
+- Settle For Deposit, internal consistency/report specifications, and reporting/payroll cutoffs without adding payroll processing.
+- Refine remaining security/audit-view permissions, proposed correction reasons, report finalization, and later amendments.
 
 ## Next step
 
