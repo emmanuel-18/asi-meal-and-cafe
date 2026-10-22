@@ -8,6 +8,7 @@ import MenuWorkspace from "./menu-workspace";
 import CustomersWorkspace from "./customers-workspace";
 import ReportsWorkspace from "./reports-workspace";
 import AppNavigation, { type Section } from "./app-navigation";
+import UsersWorkspace from "./users-workspace";
 
 export default function MealApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -87,10 +88,22 @@ export default function MealApp() {
     finally { setBusy(false); }
   }
 
+  async function changePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    setBusy(true); setNotice("");
+    try {
+      const verified = await request<Session>("/auth/change-password", { method: "POST", body: {
+        current_password: data.get("current_password"), new_password: data.get("new_password"),
+      } });
+      setSession(verified); setNotice("Password changed."); form.reset();
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to change password."); }
+    finally { form.reset(); setBusy(false); }
+  }
+
   return <div className={`app-shell${session ? "" : " is-signed-out"}`}>
     <a className="skip-link" href="#main">Skip to content</a>
     {!session && <header className="app-header login-header"><div className="brand"><h1>ASI Meal Management</h1><p>Meal Sales &amp; Payment Tracking</p></div></header>}
-    {session && <AppNavigation session={session} section={section} onSelect={setSection} onLogout={() => void logout()} busy={busy} />}
+    {session && !session.user.password_change_required && <AppNavigation session={session} section={section} onSelect={setSection} onLogout={() => void logout()} busy={busy} />}
     <main id="main" tabIndex={-1} className={session ? "workspace" : "login-space"}>
       {notice && <div className={`notice${notice === "Signed out." ? " signed-out-notice" : ""}`} role="status">{notice}{notice !== "Signed out." && <button type="button" className="text-button" onClick={() => void check()}>Try again</button>}</div>}
       {checking ? <p role="status">Checking session…</p> : !session ? <section className="panel login-panel">
@@ -98,13 +111,13 @@ export default function MealApp() {
         <form onSubmit={login}><label>Login name<input name="login_name" required maxLength={255} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
           <label>Password<input name="password" type="password" required maxLength={1024} autoComplete="current-password" /></label>
           <button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button></form>
-      </section> : section === "Menu" ? <MenuWorkspace request={request} initialDate={menuDate} onSaved={menuSaved} /> : section === "Customers" ? <CustomersWorkspace request={request} role={session.user.role} /> : section === "Reports" ? <ReportsWorkspace request={request} /> : <>
+      </section> : session.user.password_change_required ? <section className="panel login-panel"><h2>Change your password</h2><p>Change your temporary password before continuing.</p><form onSubmit={changePassword}><label>Current password<input name="current_password" type="password" autoComplete="current-password" required /></label><label>New password<input name="new_password" type="password" autoComplete="new-password" minLength={8} required /></label><button disabled={busy}>Change password</button><button type="button" className="secondary" onClick={() => void logout()} disabled={busy}>Sign out</button></form></section> : section === "Users" && session.user.role === "super_admin" ? <UsersWorkspace request={request} /> : section === "Menu" ? <MenuWorkspace request={request} initialDate={menuDate} onSaved={menuSaved} /> : section === "Customers" ? <CustomersWorkspace request={request} role={session.user.role} /> : section === "Reports" ? <ReportsWorkspace request={request} /> : <>
         <div className="section-heading"><div><h2>{entry ? "New meal order" : "Orders"}</h2><p className="muted">{entry ? "Choose a customer, select items, then review payment allocations." : "Find orders, review details, and record meal handover."}</p></div>
           <button type="button" className={entry ? "secondary" : "brand-accent"} onClick={() => { setEntry(!entry); setSavedId(null); }}>
             {entry ? "Back to orders" : "New order"}</button></div>
         {!entry && <OrderRegister request={request} session={session} savedId={savedId} />}
       </>}
-      {session && entry && <div hidden={section !== "Orders"}><OrderEntry request={request} menuRevision={menuRevision}
+      {session && !session.user.password_change_required && entry && <div hidden={section !== "Orders"}><OrderEntry request={request} menuRevision={menuRevision}
         onConfigureMenu={day => { setMenuDate(day); setSection("Menu"); }} onSaved={id => { setSavedId(id); setEntry(false); }} /></div>}
     </main>
   </div>;

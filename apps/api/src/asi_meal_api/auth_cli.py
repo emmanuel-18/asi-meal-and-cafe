@@ -6,10 +6,13 @@ import os
 import sys
 import warnings
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
 from asi_meal_api.auth import AuthService, ProvisioningRejected
+from asi_meal_api.db import models as m
+from asi_meal_api.user_management import event, revoke
+from datetime import datetime, timezone
 
 
 class SafeParser(argparse.ArgumentParser):
@@ -19,14 +22,14 @@ class SafeParser(argparse.ArgumentParser):
 
 def main(argv=None) -> int:
     parser = SafeParser(description="Authorized local authentication maintenance")
-    parser.add_argument("operation", choices=("bootstrap-admin", "cleanup-sessions"))
+    parser.add_argument("operation", choices=("bootstrap-admin", "cleanup-sessions", "promote-admin1"))
     args = parser.parse_args(argv)
     engine = None
     try:
         url = os.environ.get("ASI_DATABASE_URL", "")
         if not url.startswith("postgresql+psycopg://"):
             raise ValueError
-        if args.operation == "bootstrap-admin" and not sys.stdin.isatty():
+        if args.operation in {"bootstrap-admin", "promote-admin1"} and not sys.stdin.isatty():
             print("Interactive terminal required; provisioning refused.", file=sys.stderr)
             return 1
         engine = create_engine(url, hide_parameters=True)
@@ -45,6 +48,32 @@ def main(argv=None) -> int:
                 return 1
             service.provision_first_admin(login, display, password)
             print("Initial Admin provisioned.")
+        elif args.operation == "promote-admin1":
+            with engine.connect() as connection:
+                identity = connection.execute(text("SELECT current_database(), current_user, inet_server_addr()::text, inet_server_port()")).one()
+            print(f"Database: {identity[0]}; database user: {identity[1]}; server: {identity[2]}:{identity[3]}")
+            operator = input("Local operator identifier (self-attested): ").strip()
+            reason = input("Promotion reason: ").strip()
+            if not operator or not reason or len(operator) > 255 or len(reason) > 1000:
+                raise ProvisioningRejected("Operator and reason are required")
+            if input("Verify database and type PROMOTE admin1 to confirm: ") != "PROMOTE admin1":
+                raise ProvisioningRejected("Promotion not confirmed")
+            with service.session_factory() as session, session.begin():
+                session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": int.from_bytes(b"ASISUPER", "big")})
+                user = session.scalar(select(m.User).where(m.User.login_name == "admin1").with_for_update())
+                if user is None or not user.is_enabled or user.role_code not in {"admin", "super_admin"}:
+                    raise ProvisioningRejected("Active admin1 Admin account not found")
+                if user.role_code == "admin":
+                    now = datetime.now(timezone.utc)
+                    user.role_code = "super_admin"
+                    user.updated_at = now
+                    revoke(session, user.id, now)
+                    event(session, user.id, user.id, "super_admin_promoted", {"role": "admin"},
+                          {"role": "super_admin", "operator": operator, "attribution": "local_self_attested"}, reason)
+                    message = "Promotion recorded; existing sessions revoked. Operator identity is self-attested."
+                else:
+                    message = "Account is already Super Admin; no change made."
+            print(message)
         else:
             print(f"Removed {service.cleanup()} expired/revoked sessions.")
         return 0

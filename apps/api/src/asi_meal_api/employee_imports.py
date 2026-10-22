@@ -118,7 +118,7 @@ class EmployeeImportService:
                 or not 0 < actor.user_id <= 9223372036854775807):
             raise Forbidden("A trusted Admin actor context is required")
         user = session.scalar(select(m.User).where(m.User.id == actor.user_id).with_for_update(read=True))
-        if user is None or not user.is_enabled or user.role_code != "admin":
+        if user is None or not user.is_enabled or user.password_change_required or user.role_code not in {"admin", "super_admin"}:
             raise Forbidden("Only an enabled Admin may import employees")
         return user
 

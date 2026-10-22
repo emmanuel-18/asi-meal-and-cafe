@@ -2,7 +2,7 @@ import type { Employee, RequestApi, Role } from "./api.ts";
 
 export const pageSize = 20;
 export const maxUpload = 8 * 1024 * 1024;
-export const canImport = (role: Role) => role === "admin";
+export const canImport = (role: Role) => role === "admin" || role === "super_admin";
 
 export function fileError(file: Pick<File, "name" | "size"> | null): string {
   if (!file) return "Select a CSV file.";

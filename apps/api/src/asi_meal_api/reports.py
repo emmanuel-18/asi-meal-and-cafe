@@ -161,7 +161,7 @@ class ReportingService:
             session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
             session.execute(text("SET TRANSACTION READ ONLY"))
             user = session.scalar(select(m.User).where(m.User.id == actor.user_id))
-            if user is None or not user.is_enabled or user.role_code not in {"admin", "assistant_admin"}:
+            if user is None or not user.is_enabled or user.password_change_required or user.role_code not in {"admin", "assistant_admin", "super_admin"}:
                 raise Forbidden("Actor may not view operational reports")
             yield session
 

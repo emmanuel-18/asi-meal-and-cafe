@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel, ConfigDict, SecretStr
 
 from asi_meal_api.auth import AuthService, SessionResult, require_admin
 
@@ -106,8 +107,11 @@ def verified_identity(request: Request):
     unsafe = request.method not in {"GET", "HEAD", "OPTIONS"}
     if unsafe:
         value.settings.check_origin(request)
-    return value.service.current(request.cookies.get(value.settings.cookie), request.headers.get("x-csrf-token"),
+    user = value.service.current(request.cookies.get(value.settings.cookie), request.headers.get("x-csrf-token"),
                                  verify_csrf=unsafe).user
+    if user.password_change_required:
+        raise HTTPException(403, "Password change required")
+    return user
 
 
 def authenticated_actor(request: Request):
@@ -120,11 +124,34 @@ def admin_actor(request: Request):
 
 def user_response(result: SessionResult):
     return {"user": {"id": result.user.id, "login_name": result.user.login_name,
-                     "display_name": result.user.display_name, "role": result.user.role},
+                     "display_name": result.user.display_name, "role": result.user.role,
+                     "password_change_required": result.user.password_change_required},
             "csrf_token": result.csrf_token}
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+class PasswordChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    current_password: SecretStr
+    new_password: SecretStr
+
+
+@router.post("/change-password")
+def change_password(body: PasswordChange, request: Request):
+    value = runtime(request)
+    value.settings.check_origin(request)
+    value.limiter.check(request.client.host if request.client else "unknown")
+    try:
+        result = value.service.change_password(request.cookies.get(value.settings.cookie),
+            request.headers.get("x-csrf-token"), body.current_password.get_secret_value(), body.new_password.get_secret_value())
+    except ValueError as exc:
+        from asi_meal_api.auth import ProvisioningRejected
+        if isinstance(exc, ProvisioningRejected):
+            raise HTTPException(422, str(exc)) from None
+        raise
+    return user_response(result)
 
 
 @router.post("/login")

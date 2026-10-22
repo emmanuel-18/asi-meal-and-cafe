@@ -26,6 +26,7 @@ API_ROOT = Path(__file__).resolve().parents[1]
 # provisioning, audit-history, price-override or snapshot-edit routes are exposed.
 EXPECTED_HTTP_ROUTES = {
     "/health": {"get"}, "/auth/login": {"post"}, "/auth/logout": {"post"}, "/auth/me": {"get"},
+    "/auth/change-password": {"post"}, "/api/users": {"get", "post"}, "/api/users/{user_id}": {"patch"},
     "/api/employees": {"get"}, "/api/employees/import": {"post"},
     "/api/visitors": {"get", "post"}, "/api/dishes": {"get", "post"},
     "/api/visitors/{visitor_id}": {"patch", "delete"}, "/api/dishes/{dish_id}": {"patch", "delete"},

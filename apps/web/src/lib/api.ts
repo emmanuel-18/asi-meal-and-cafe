@@ -1,6 +1,6 @@
 // Matches the existing FastAPI schemas. Cookies stay HttpOnly; CSRF stays in memory.
-export type Role = "admin" | "assistant_admin";
-export type Session = { user: { id: number; login_name: string; display_name: string; role: Role }; csrf_token: string };
+export type Role = "admin" | "assistant_admin" | "super_admin";
+export type Session = { user: { id: number; login_name: string; display_name: string; role: Role; password_change_required: boolean }; csrf_token: string };
 export type Employee = { employee_number: string; full_name: string; position: string | null; campaign: string | null; line_of_business: string | null };
 export type Visitor = { id: number; display_name: string };
 export type Category = "vegetable" | "non_vegetable" | "extra_rice";

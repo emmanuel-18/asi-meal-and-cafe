@@ -44,7 +44,7 @@ class Timestamps:
 class Role(Base):
     __tablename__ = "roles"
     __table_args__ = (
-        CheckConstraint("code IN ('admin', 'assistant_admin')", name="code_allowed"),
+        CheckConstraint("code IN ('admin', 'assistant_admin', 'super_admin')", name="code_allowed"),
         nonblank("display_name"),
     )
     code: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -63,6 +63,7 @@ class User(Identified, Timestamps, Base):
     password_hash: Mapped[str] = mapped_column(Text)
     role_code: Mapped[str] = mapped_column(fk("roles.code"))
     is_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    password_change_required: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     role: Mapped[Role] = relationship(back_populates="users")
 
 

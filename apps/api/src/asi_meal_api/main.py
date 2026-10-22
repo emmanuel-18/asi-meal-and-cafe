@@ -14,6 +14,7 @@ from asi_meal_api.business_http import directory_router, menu_router, order_rout
 from asi_meal_api.employee_imports import ImportHistoryError, ImportSourceError
 from asi_meal_api.orders import Conflict, Forbidden, NotFound, OrderError
 from asi_meal_api.reports import ReportInputError
+from asi_meal_api.user_http import router as user_router
 
 
 def create_app(auth: AuthRuntime | None = None) -> FastAPI:
@@ -83,6 +84,7 @@ def create_app(auth: AuthRuntime | None = None) -> FastAPI:
         return {"status": "ok"}
 
     application.include_router(router)
+    application.include_router(user_router)
     for business_router in (directory_router, menu_router, order_router, report_router):
         application.include_router(business_router)
     return application

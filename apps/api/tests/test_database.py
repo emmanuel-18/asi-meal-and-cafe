@@ -120,7 +120,7 @@ def test_schema_objects_and_no_model_migration_drift(db):
 
 
 def test_reference_data_is_exact_and_has_no_accounts(db):
-    assert dict(db.exec_driver_sql("SELECT code,display_name FROM roles").all()) == {"admin": "Admin", "assistant_admin": "Assistant Admin"}
+    assert dict(db.exec_driver_sql("SELECT code,display_name FROM roles").all()) == {"admin": "Admin", "assistant_admin": "Assistant Admin", "super_admin": "Super Admin"}
     assert dict(db.exec_driver_sql("SELECT code,default_unit_price FROM item_categories").all()) == {
         "vegetable": Decimal("50"), "non_vegetable": Decimal("75"), "extra_rice": Decimal("15")}
     assert set(db.exec_driver_sql("SELECT code FROM payment_categories").scalars()) == {"cash", "gcash", "sd", "incentive", "finance"}

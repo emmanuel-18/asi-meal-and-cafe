@@ -158,8 +158,8 @@ def authorize_actor(session: Session, context: ActorContext, *, admin: bool = Fa
         raise Forbidden("A trusted actor context is required")
     _id(context.user_id)
     user = session.scalar(select(m.User).where(m.User.id == context.user_id).with_for_update(read=True))
-    roles = {"admin"} if admin else {"admin", "assistant_admin"}
-    if user is None or not user.is_enabled or user.role_code not in roles:
+    roles = {"admin", "super_admin"} if admin else {"admin", "assistant_admin", "super_admin"}
+    if user is None or not user.is_enabled or user.password_change_required or user.role_code not in roles:
         raise Forbidden("Actor is not authorized")
     return user
 

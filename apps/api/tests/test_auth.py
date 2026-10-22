@@ -112,7 +112,7 @@ def test_login_me_logout_cookies_and_no_secret_leak(auth_env, mode, caplog):
         assert response.status_code == 200
         payload = response.json()
         assert set(payload) == {"user", "csrf_token"}
-        assert payload["user"] == {"id": g["actor"], "login_name": "Synthetic.Login", "display_name": "Synthetic Admin", "role": "admin"}
+        assert payload["user"] == {"id": g["actor"], "login_name": "Synthetic.Login", "display_name": "Synthetic Admin", "role": "admin", "password_change_required": False}
         cookie = response.headers["set-cookie"]
         assert "HttpOnly" in cookie and "SameSite=lax" in cookie and "Path=/" in cookie and "Domain=" not in cookie
         assert "Max-Age=28800" in cookie and ("Secure" in cookie) == (mode == "https")
@@ -283,6 +283,13 @@ def test_verified_actor_dependencies_and_stored_role_enforcement(auth_env):
             EmployeeImportService(service._sessions).import_csv(assistant.actor, csv_bytes([person()]))
         assert ReportingService(service._sessions).sales_summary(assistant.actor, DateRange.daily(g["day"])).recognized_sales == marked.total
         with engine.begin() as connection:
+            sql(connection, "UPDATE users SET role_code='super_admin' WHERE id=:id", id=g["actor"])
+        super_admin = service.current(c.cookies.get(runtime.settings.cookie)).user
+        assert super_admin.role == "super_admin" and c.get("/probe/admin").status_code == 200
+        reversed_order = orders.reverse_received(super_admin.actor, order.order_id, marked.version, Correction("mistaken_click", True))
+        assert not reversed_order.is_received
+        assert ReportingService(service._sessions).sales_summary(super_admin.actor, DateRange.daily(g["day"])).recognized_sales == 0
+        with engine.begin() as connection:
             sql(connection, "UPDATE users SET is_enabled=false WHERE id=:id", id=g["actor"])
         assert c.get("/probe/actor").status_code == 401
 
@@ -442,3 +449,38 @@ def test_session_revision_preserves_business_data_and_constraints(empty_auth):
         reject(c, "INSERT INTO auth_sessions (user_id,token_hash,csrf_token,expires_at) "
                "VALUES (99999999,decode(repeat('01',32),'hex'),decode(repeat('01',32),'hex'),now()+interval '1 hour')")
     with pytest.raises(AuthenticationFailed): service.current(logged.token)
+
+
+def test_user_management_and_required_password_change(auth_env):
+    engine, g, _, _, password, _, runtime = auth_env
+    with engine.begin() as c:
+        sql(c, "UPDATE users SET role_code='super_admin' WHERE id=:id", id=g['actor'])
+    origin = {"Origin": "https://testserver"}
+    temporary, replacement = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+    with client(runtime) as admin, client(runtime) as created:
+        login = login_http(admin, password)
+        headers = {**origin, "X-CSRF-Token": login.json()["csrf_token"]}
+        response = admin.post('/api/users', headers=headers, json={"login_name":"Synthetic.New", "display_name":"Synthetic Person", "role":"assistant_admin", "temporary_password":temporary})
+        assert response.status_code == 201, response.text
+        account = response.json()
+        assert account['password_change_required'] and temporary not in response.text
+        assert admin.post('/api/users', headers=headers, json={"login_name":"synthetic.new", "display_name":"Synthetic", "role":"admin", "temporary_password":temporary}).status_code == 409
+        login = login_http(created, temporary, name='Synthetic.New')
+        assert login.status_code == 200 and login.json()['user']['password_change_required']
+        change_headers = {**origin, 'X-CSRF-Token': login.json()['csrf_token']}
+        assert created.get('/api/dishes').status_code == 403
+        assert created.get('/api/users').status_code == 403
+        assert created.post('/auth/change-password', json={'current_password':temporary, 'new_password':replacement}).status_code == 403
+        changed = created.post('/auth/change-password', headers=change_headers, json={'current_password':temporary, 'new_password':replacement})
+        assert changed.status_code == 200 and not changed.json()['user']['password_change_required']
+        assert created.get('/api/dishes').status_code == 200
+        assert created.get('/api/users').status_code == 403
+        changed_account = admin.patch(f"/api/users/{account['id']}", headers=headers, json={"expected_updated_at": account['updated_at'], "is_enabled": False})
+        # Password change updates the account version: stale admin state must conflict.
+        assert changed_account.status_code == 409
+        account = next(u for u in admin.get('/api/users').json() if u['id'] == account['id'])
+        assert admin.patch(f"/api/users/{account['id']}", headers=headers, json={"expected_updated_at": account['updated_at'], "is_enabled": False}).status_code == 200
+        assert created.get('/auth/me').status_code == 401
+        with engine.connect() as c:
+            audits = repr(sql(c, "SELECT before_values,after_values FROM audit_events").all())
+            assert temporary not in audits and replacement not in audits

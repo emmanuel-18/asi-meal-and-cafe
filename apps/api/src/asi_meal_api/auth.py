@@ -10,7 +10,7 @@ import secrets
 
 from argon2 import PasswordHasher, Type
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from asi_meal_api.db import models as m
@@ -92,6 +92,7 @@ class Identity:
     login_name: str
     display_name: str
     role: str
+    password_change_required: bool = False
 
     @property
     def actor(self) -> ActorContext:
@@ -125,7 +126,7 @@ class AuthService:
 
     @staticmethod
     def _identity(user: m.User) -> Identity:
-        return Identity(user.id, user.login_name, user.display_name, user.role_code)
+        return Identity(user.id, user.login_name, user.display_name, user.role_code, user.password_change_required)
 
     @staticmethod
     def _digest(token: str | None) -> bytes:
@@ -151,7 +152,7 @@ class AuthService:
             users = {u.id: u for u in session.scalars(select(m.User).where(m.User.id.in_(ids)).order_by(m.User.id).with_for_update())}
             user = users.get(user_id)
             valid = self.passwords.verify(user.password_hash if user else None, password)
-            if not valid or user is None or not user.is_enabled or user.role_code not in {"admin", "assistant_admin"}:
+            if not valid or user is None or not user.is_enabled or user.role_code not in {"admin", "assistant_admin", "super_admin"}:
                 raise AuthenticationFailed()
             now = self._clock()
             if old_digest:
@@ -170,15 +171,15 @@ class AuthService:
             self._audit(session, user.id, "auth_login", {"session_id": auth.id})
             return SessionResult(self._identity(user), encode_token(raw), encode_token(csrf), auth.expires_at)
 
-    def _active(self, session, token):
+    def _active(self, session, token, *, write_user=False):
         digest = self._digest(token)
         user_id = session.scalar(select(m.AuthSession.user_id).where(m.AuthSession.token_hash == digest))
         if user_id is None:
             raise AuthenticationFailed()
-        user = session.scalar(select(m.User).where(m.User.id == user_id).with_for_update(read=True))
+        user = session.scalar(select(m.User).where(m.User.id == user_id).with_for_update(read=not write_user))
         auth = session.scalar(select(m.AuthSession).where(m.AuthSession.token_hash == digest).with_for_update())
         now = self._clock()
-        if (auth is None or user is None or not user.is_enabled or user.role_code not in {"admin", "assistant_admin"}
+        if (auth is None or user is None or not user.is_enabled or user.role_code not in {"admin", "assistant_admin", "super_admin"}
                 or auth.revoked_at is not None or now >= auth.expires_at or now - auth.last_seen_at >= self.idle_timeout):
             raise AuthenticationFailed()
         return user, auth, max(now, auth.last_seen_at)
@@ -206,6 +207,23 @@ class AuthService:
             self._check_csrf(auth, csrf_token)
             auth.revoked_at = now
             self._audit(session, user.id, "auth_logout", {"session_id": auth.id})
+
+    def change_password(self, token: str | None, csrf_token: str | None, current: str, new: str) -> SessionResult:
+        encoded = self.passwords.hash(new)
+        with self._sessions() as session, session.begin():
+            user, auth, now = self._active(session, token, write_user=True)
+            self._check_csrf(auth, csrf_token)
+            if not self.passwords.verify(user.password_hash, current):
+                raise AuthenticationFailed()
+            if current == new:
+                raise ProvisioningRejected("New password must differ from the current password")
+            user.password_hash = encoded
+            user.password_change_required = False
+            user.updated_at = now
+            session.execute(update(m.AuthSession).where(m.AuthSession.user_id == user.id,
+                m.AuthSession.id != auth.id, m.AuthSession.revoked_at.is_(None)).values(revoked_at=now))
+            self._audit(session, user.id, "password_changed", {"password_change_required": False})
+            return SessionResult(self._identity(user), token, encode_token(auth.csrf_token), auth.expires_at)
 
     def provision_first_admin(self, login_name: str, display_name: str, password: str) -> Identity:
         if (not isinstance(login_name, str) or not login_name.strip() or len(login_name) > 255
@@ -235,6 +253,6 @@ class AuthService:
 
 
 def require_admin(identity: Identity) -> ActorContext:
-    if type(identity) is not Identity or identity.role != "admin":
+    if type(identity) is not Identity or identity.role not in {"admin", "super_admin"}:
         raise Forbidden("Admin permission required")
     return identity.actor

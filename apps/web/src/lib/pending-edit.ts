@@ -8,7 +8,7 @@ export type PendingDraft = { lines: DraftLine[]; split: boolean; single: Payment
 const codes: Payment[] = ["cash", "gcash", "sd", "incentive", "finance"];
 
 export function canEditPending(role: Role, received: boolean): boolean {
-  return !received && (role === "admin" || role === "assistant_admin");
+  return !received && (role === "admin" || role === "assistant_admin" || role === "super_admin");
 }
 export function createDraft(order: OrderDetail): PendingDraft {
   if (order.is_received) throw new Error("Received orders cannot be edited. Reload the latest order.");

@@ -55,7 +55,7 @@ export function buildOrder(key: string, menu: Menu, quantities: Record<number, n
   if ("visitor_id" in customer && allocations.some(a => a.category !== "finance")) throw new Error("Visitors use Finance only.");
   return { request_key: key, service_date: menu.service_date, menu_id: menu.id, ...customer, items, allocations };
 }
-export function canReverse(role: Role, received: boolean): boolean { return role === "admin" && received; }
+export function canReverse(role: Role, received: boolean): boolean { return (role === "admin" || role === "super_admin") && received; }
 export function canConfirm(reason: Reason, explanation: string, acknowledged: boolean): boolean {
   return acknowledged && (reason !== "other" || explanation.trim().length > 0);
 }
