@@ -233,12 +233,12 @@ def test_visitor_edit_and_pending_allocation_completion(db, env):
         service.edit_pending(assistant, created.order_id, 1, EditPending(
             quantities=(QuantityChange(before["lines"][0]["id"], 2),), allocations=(Allocation("sd", Decimal("295")),)))
     assert state(db, created.order_id) == before
-    with pytest.raises(OrderError):
-        service.mark_received(admin, created.order_id, 1)
     edited = service.edit_pending(assistant, created.order_id, 1,
-                                  EditPending(allocations=(Allocation("finance", Decimal("245")),)))
+                                  EditPending(allocations=(Allocation("finance", Decimal("200")),)))
     marked = service.mark_received(assistant, created.order_id, edited.version)
-    assert state(db, marked.order_id)["order"]["is_received"]
+    saved = state(db, marked.order_id)
+    assert saved["order"]["is_received"]
+    assert saved["allocations"][0]["amount"] == Decimal("245")
 
 
 @pytest.mark.parametrize("amount", ["244.99", "245.01"])

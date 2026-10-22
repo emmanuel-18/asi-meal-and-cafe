@@ -29,19 +29,19 @@ export type PendingEdit = {
   expected_version: number; quantities: { line_id: number; quantity: number }[];
   remove_line_ids: number[]; add_items: { menu_item_id: number; quantity: number }[]; allocations: Allocation[];
 };
-export type ApiOptions = { method?: "GET" | "POST" | "PATCH" | "PUT"; body?: unknown; signal?: AbortSignal; csv?: Blob };
+export type ApiOptions = { method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; body?: unknown; signal?: AbortSignal; csv?: Blob };
 export type RequestApi = <T>(path: string, options?: ApiOptions) => Promise<T>;
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number) {
-    super(status === 401 ? "Your session has expired. Please sign in again." :
+  constructor(status: number, safeDetail?: string) {
+    super(safeDetail ?? (status === 401 ? "Your session has expired. Please sign in again." :
       status === 403 ? "This action is not permitted. Refresh your session and try again." :
       status === 404 ? "The requested record or menu was not found." :
       status === 409 ? "This record changed. Review the refreshed details before trying again." :
       status === 422 || status === 400 ? "Check the entered details. The request was not accepted." :
       status === 429 ? "Too many attempts. Please wait a minute and try again." :
-      "The service is unavailable. Please try again.");
+      "The service is unavailable. Please try again."));
     this.status = status;
   }
 }
@@ -63,7 +63,15 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}, csrf
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError(0);
   }
-  if (!response.ok && !(path === "/api/employees/import" && options.csv && response.status === 422)) throw new ApiError(response.status);
+  if (!response.ok && !(path === "/api/employees/import" && options.csv && response.status === 422)) {
+    const safeConflicts = ["Visitor changed; refresh before trying again", "Visitor is used by an order and cannot be deleted",
+      "Dish changed; refresh before trying again", "Dish is used by a saved menu and cannot be deleted"];
+    let detail: string | undefined;
+    if (response.status === 409 && /^\/api\/(visitors|dishes)\/\d+$/.test(path)) {
+      try { const body = await response.json(); if (safeConflicts.includes(body?.detail)) detail = body.detail; } catch { /* Do not expose arbitrary response data. */ }
+    }
+    throw new ApiError(response.status, detail);
+  }
   if (response.status === 204) return undefined as T;
   try {
     const result = await response.json();

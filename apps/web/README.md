@@ -50,11 +50,12 @@ listing endpoint is currently exposed.
 Use the existing frontend dependencies and a compatible Node.js runtime (the
 project API/web images use Python 3.13 / Node.js 24). Do not change the system Node
 installation. From `apps/web`, run `npm run dev -- --hostname 127.0.0.1` and open
-**http://127.0.0.1:3000**. Local Cardo/Open Sans packages are already installed;
+**http://127.0.0.1:43871**. The `dev` script supplies port `43871` by default;
+an explicit `--port` may override it for a separate instance. Local Cardo/Open Sans packages are already installed;
 no remote font or cloud service is used.
 
 Next.js rewrites `/auth/*` and `/api/*` to `ASI_API_ORIGIN`, a server-only HTTP(S)
-origin, default **http://127.0.0.1:8000**. There is no browser-facing API URL,
+origin, default **http://127.0.0.1:43872**. There is no browser-facing API URL,
 credentialed CORS workaround, or custom authentication proxy. For a different API
 port, set the non-secret `ASI_API_ORIGIN` before starting development. For a
 production build, set it **before `npm run build`** because Next.js records
@@ -67,11 +68,11 @@ migrated, authorized database and an individually provisioned account, following
 ```powershell
 $env:ASI_AUTH_ENABLED = 'true'
 $env:ASI_AUTH_MODE = 'development'
-$env:ASI_AUTH_ORIGINS = 'http://127.0.0.1:3000'
+$env:ASI_AUTH_ORIGINS = 'http://127.0.0.1:43871'
 # Supply ASI_DATABASE_URL privately, using the existing PostgreSQL configuration.
 # From the repository root, in the API terminal:
 $env:PYTHONPATH = 'C:\asi-meal-management\apps\api\src'
-.\.venv\Scripts\python.exe -m uvicorn asi_meal_api.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers
+.\.venv\Scripts\python.exe -m uvicorn asi_meal_api.main:app --host 127.0.0.1 --port 43872 --no-proxy-headers
 ```
 
 The explicit development profile accepts only loopback clients/hosts and uses

@@ -100,14 +100,14 @@ export default function PendingOrderEditor({ order, request, onCancel, onSaved, 
           {menu && !offerings.length && <p className="muted">No recorded-menu offerings match this search.</p>}
         </div>
         <h4>Payment allocations</h4>
-        {!visitor && <label className="check-label"><input type="checkbox" checked={draft.split} onChange={e => setDraft(current => switchMode(current, e.target.checked))} />Split Payment</label>}
+        {!visitor && <label className="check-label payment-choice"><input type="checkbox" checked={draft.split} onChange={e => setDraft(current => switchMode(current, e.target.checked))} />Split payment</label>}
         {visitor ? <p>Visitor orders use Finance only.</p> : !draft.split && <label>Payment category<select value={draft.single} onChange={e => setDraft(current => ({ ...current, single: e.target.value as Payment,
           amounts: { [e.target.value]: current.amounts[current.single] ?? "" } }))}>{codes.map(code => <option key={code} value={code}>{paymentLabels[code]}</option>)}</select></label>}
-        <p className="muted">Leave an amount blank to remove that allocation. Switching to a single method saves only its displayed category and amount. Pending allocations may be incomplete.</p>
-        <div className="allocation-grid">{(visitor ? ["finance"] as Payment[] : draft.split ? codes : [draft.single]).map(code => <label key={code}>{paymentLabels[code]} amount
+        {visitor ? <p className="muted">Finance is automatically set to the item total when saved.</p> : <p className="muted">Leave an amount blank to remove that allocation. Switching to a single method saves only its displayed category and amount. Pending allocations may be incomplete.</p>}
+        {!visitor && <div className="allocation-grid">{(draft.split ? codes : [draft.single]).map(code => <label key={code}>{paymentLabels[code]} amount
           <input inputMode="decimal" type="text" maxLength={13} value={draft.amounts[code] ?? ""} placeholder="0.00"
             aria-invalid={!!errors[`amount-${code}`]} aria-describedby={errors[`amount-${code}`] ? `error-amount-${code}` : undefined} onChange={e => amount(code, e.target.value)} />
-          {errors[`amount-${code}`] && <span className="field-error" id={`error-amount-${code}`}>{errors[`amount-${code}`]}</span>}</label>)}</div>
+          {errors[`amount-${code}`] && <span className="field-error" id={`error-amount-${code}`}>{errors[`amount-${code}`]}</span>}</label>)}</div>}
         {errors.allocations && <p className="field-error" role="alert">{errors.allocations}</p>}
         <div className="allocation-summary" aria-live="polite"><span>Item total <strong>{totals.total === null ? "Check quantities" : pesos(totals.total)}</strong></span>
           <span>Allocated <strong>{totals.allocated === null ? "Check amounts" : pesos(totals.allocated)}</strong></span>

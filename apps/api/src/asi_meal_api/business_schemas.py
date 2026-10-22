@@ -36,6 +36,27 @@ class DishIn(Input):
     category_code: Category
 
 
+class VisitorEdit(Input):
+    display_name: Name
+    expected_name: Name
+
+
+class VisitorDelete(Input):
+    expected_name: Name
+
+
+class DishEdit(Input):
+    name: Name
+    category_code: Literal["vegetable", "non_vegetable"]
+    expected_name: Name
+    expected_category: Literal["vegetable", "non_vegetable"]
+
+
+class DishDelete(Input):
+    expected_name: Name
+    expected_category: Literal["vegetable", "non_vegetable"]
+
+
 class DateAssignment(Input):
     service_date: date
     # Required even when null: null asserts that the date is unassigned.
@@ -46,10 +67,25 @@ class ScheduleIn(Input):
     assignments: Annotated[list[DateAssignment], Field(min_length=1, max_length=366)]
 
 
+class MenuDishChange(Input):
+    id: Id
+    expected_name: Name
+    expected_category: Literal["vegetable", "non_vegetable"]
+    delete: StrictBool = False
+    name: Name | None = None
+    category_code: Literal["vegetable", "non_vegetable"] | None = None
+
+
 class MenuIn(Input):
     label: Name | None = None
-    dish_ids: Annotated[list[Id], Field(min_length=1, max_length=100)]
+    dish_ids: Annotated[list[Id], Field(max_length=100)]
     assignments: list[DateAssignment] = Field(default_factory=list, max_length=366)
+    include_default_rice: StrictBool = False
+    dish_changes: list[MenuDishChange] = Field(default_factory=list, max_length=100)
+
+
+class MenuDefaultsOut(BaseModel):
+    extra_rice_price: Decimal
 
 
 class ItemIn(Input):
@@ -178,6 +214,18 @@ class OrderSummary(BaseModel):
     is_received: bool
     version: int
     total: Decimal
+
+
+class OrderOverview(BaseModel):
+    pending: int
+    received: int
+    total: int
+    recognized_sales: Decimal
+
+
+class OrderPage(BaseModel):
+    revision: str
+    orders: list[OrderSummary]
 
 
 class LineOut(BaseModel):

@@ -31,7 +31,7 @@ export default function ReportsWorkspace({ request }: { request: RequestApi }) {
   function refresh() { setError(""); setBundle(null); setLoading(true); setRevision(value => value + 1); }
   const employees = bundle ? matchingEmployees(bundle, query) : [];
 
-  return <><div className="section-heading"><h2>Reports</h2></div>
+  return <><div className="section-heading"><div><h2>Reports</h2><p className="muted">Recognized sales, payment allocations, and Salary Deduction.</p></div></div>
     <section className="panel"><h3>Reporting period</h3>
       <form className="filter-row" onSubmit={apply}>
         <label>Period<select value={filter.mode} onChange={event => setFilter({ ...filter, mode: event.target.value as ReportMode })}>
@@ -44,30 +44,30 @@ export default function ReportsWorkspace({ request }: { request: RequestApi }) {
       </form>
       <p className="muted">Dates are inclusive and use the Philippine operational calendar. Only currently Received orders are included. Refresh to see corrections.</p>
       {error && <p className="error" role="alert">{error}</p>}{loading && <p role="status">Loading report…</p>}
-      {bundle && <p role="status"><strong>Showing {bundle.sales.period.start} through {bundle.sales.period.end}</strong> (inclusive)</p>}
+      {bundle && <p className="report-period" role="status"><strong>Showing {bundle.sales.period.start} through {bundle.sales.period.end}</strong> (inclusive)</p>}
     </section>
     {bundle && !loading && <>
       <section className="panel"><h3>Sales summary</h3>
-        <div className="allocation-summary"><span>Recognized sales <strong>{pesos(bundle.sales.recognized_sales)}</strong></span><span>Received orders <strong>{bundle.sales.received_order_count}</strong></span><span>Meals <strong>{bundle.sales.meal_quantity}</strong></span><span>Items <strong>{bundle.sales.item_quantity}</strong></span></div>
+        <div className="allocation-summary sales-summary"><span>Recognized sales <strong>{pesos(bundle.sales.recognized_sales)}</strong></span><span>Received orders <strong>{bundle.sales.received_order_count}</strong></span><span>Meals <strong>{bundle.sales.meal_quantity}</strong></span><span>Items <strong>{bundle.sales.item_quantity}</strong></span></div>
         {bundle.sales.received_order_count === 0 && <p className="muted" role="status">No Received orders in this period.</p>}
-        <div className="table-scroll" role="region" aria-label="Sales by recorded category" tabIndex={0}><table><caption>Sales by recorded category</caption><thead><tr><th scope="col">Category</th><th scope="col">Quantity</th><th scope="col">Sales</th></tr></thead>
-          <tbody>{bundle.sales.categories.map(row => <tr key={row.category}><th scope="row">{categoryLabels[row.category]}</th><td>{row.quantity}</td><td>{pesos(row.amount)}</td></tr>)}</tbody></table></div>
-        {bundle.sales.items.length > 0 && <div className="table-scroll" role="region" aria-label="Recorded item sales" tabIndex={0}><table><caption>Recorded item sales</caption><thead><tr><th scope="col">Item</th><th scope="col">Category</th><th scope="col">Recorded unit price</th><th scope="col">Quantity</th><th scope="col">Sales</th></tr></thead>
-          <tbody>{bundle.sales.items.map((item, index) => <tr key={`${item.source_menu_item_id}-${index}`}><th scope="row">{item.item_name}</th><td>{categoryLabels[item.category]}</td><td>{pesos(item.unit_price)}</td><td>{item.quantity}</td><td>{pesos(item.amount)}</td></tr>)}</tbody></table></div>}
+        <div className="table-scroll" role="region" aria-label="Sales by recorded category" tabIndex={0}><table><caption>Sales by recorded category</caption><thead><tr><th scope="col">Category</th><th scope="col" className="numeric">Quantity</th><th scope="col" className="numeric">Sales</th></tr></thead>
+          <tbody>{bundle.sales.categories.map(row => <tr key={row.category}><th scope="row">{categoryLabels[row.category]}</th><td className="numeric">{row.quantity}</td><td className="numeric">{pesos(row.amount)}</td></tr>)}</tbody></table></div>
+        {bundle.sales.items.length > 0 && <div className="table-scroll" role="region" aria-label="Recorded item sales" tabIndex={0}><table><caption>Recorded item sales</caption><thead><tr><th scope="col">Item</th><th scope="col">Category</th><th scope="col" className="numeric">Recorded unit price</th><th scope="col" className="numeric">Quantity</th><th scope="col" className="numeric">Sales</th></tr></thead>
+          <tbody>{bundle.sales.items.map((item, index) => <tr key={`${item.source_menu_item_id}-${index}`}><th scope="row">{item.item_name}</th><td>{categoryLabels[item.category]}</td><td className="numeric">{pesos(item.unit_price)}</td><td className="numeric">{item.quantity}</td><td className="numeric">{pesos(item.amount)}</td></tr>)}</tbody></table></div>}
       </section>
       <section className="panel"><h3>Payment allocations</h3><p className="muted">Amounts are allocated by payment category; split orders contribute their allocation to each category.</p>
-        <div className="table-scroll" role="region" aria-label="Payment-category allocations" tabIndex={0}><table><caption className="sr-only">Payment-category allocations</caption><thead><tr><th scope="col">Category</th><th scope="col">Allocated amount</th></tr></thead>
-          <tbody>{bundle.payments.totals.map(row => <tr key={row.category}><th scope="row">{paymentLabels[row.category]}</th><td>{pesos(row.amount)}</td></tr>)}</tbody>
-          <tfoot><tr><th scope="row">Total allocated</th><td>{pesos(bundle.payments.total)}</td></tr></tfoot></table></div>
+        <div className="table-scroll" role="region" aria-label="Payment-category allocations" tabIndex={0}><table><caption className="sr-only">Payment-category allocations</caption><thead><tr><th scope="col">Category</th><th scope="col" className="numeric">Allocated amount</th></tr></thead>
+          <tbody>{bundle.payments.totals.map(row => <tr key={row.category}><th scope="row">{paymentLabels[row.category]}</th><td className="numeric">{pesos(row.amount)}</td></tr>)}</tbody>
+          <tfoot><tr><th scope="row">Total allocated</th><td className="numeric">{pesos(bundle.payments.total)}</td></tr></tfoot></table></div>
       </section>
-      <section className="panel"><h3>Salary Deduction</h3><p>Total SD allocated: <strong>{pesos(bundle.salary_deduction.total)}</strong></p>
+      <section className="panel"><h3>Salary Deduction</h3><p className="total sd-total">Total SD allocated <strong>{pesos(bundle.salary_deduction.total)}</strong></p>
         <p className="muted">This records SD allocations, not payroll completion. Names and organizational details below are the snapshots recorded on each order.</p>
         {bundle.salary_deduction.employees.length === 0 ? <p role="status" className="muted">No Salary Deduction allocations in this period.</p> : <>
           <label className="report-search">Search employee number or recorded name<input value={query} onChange={event => setQuery(event.target.value)} maxLength={100} /></label>
           {!employees.length ? <p role="status" className="muted">No employees match this search.</p> : employees.map(employee => <div className="sd-employee" key={employee.employee_number}>
             <h4>Employee {employee.employee_number}</h4><p>{employee.order_count} {employee.order_count === 1 ? "order" : "orders"} · SD total: <strong>{pesos(employee.sd_amount)}</strong></p>
-            <div className="table-scroll" role="region" aria-label="Recorded salary deduction orders" tabIndex={0}><table><caption className="sr-only">Recorded SD order snapshots for employee {employee.employee_number}</caption><thead><tr><th scope="col">Date / order</th><th scope="col">Recorded name</th><th scope="col">Position</th><th scope="col">Campaign</th><th scope="col">Line of business</th><th scope="col">SD amount</th></tr></thead>
-              <tbody>{bundle.salary_deduction.orders.filter(order => order.employee_number === employee.employee_number).map(order => <tr key={order.order_id}><th scope="row">{order.service_date}<small>Order #{order.order_id}</small></th><td>{order.customer_name}</td><td>{order.position || "—"}</td><td>{order.campaign || "—"}</td><td>{order.line_of_business || "—"}</td><td>{pesos(order.sd_amount)}</td></tr>)}</tbody></table></div>
+            <div className="table-scroll" role="region" aria-label="Recorded salary deduction orders" tabIndex={0}><table><caption className="sr-only">Recorded SD order snapshots for employee {employee.employee_number}</caption><thead><tr><th scope="col">Date / order</th><th scope="col">Recorded name</th><th scope="col">Position</th><th scope="col">Campaign</th><th scope="col">Line of business</th><th scope="col" className="numeric">SD amount</th></tr></thead>
+              <tbody>{bundle.salary_deduction.orders.filter(order => order.employee_number === employee.employee_number).map(order => <tr key={order.order_id}><th scope="row">{order.service_date}<small>Order #{order.order_id}</small></th><td>{order.customer_name}</td><td>{order.position || "—"}</td><td>{order.campaign || "—"}</td><td>{order.line_of_business || "—"}</td><td className="numeric">{pesos(order.sd_amount)}</td></tr>)}</tbody></table></div>
           </div>)}
         </>}
       </section>

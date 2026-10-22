@@ -400,17 +400,27 @@ class OrderService:
             if order.is_received == received:
                 return self._result(order, before)
             if received:
-                if not before["items"] or not before["allocations"]:
+                if order.visitor_id is not None and before["items"]:
+                    if any(allocation["category"] != "finance" for allocation in before["allocations"]):
+                        raise OrderError("Visitor allocations must use Finance")
+                    total = self._result(order, before).total
+                    _money(total)
+                    self._replace_allocations(session, order, {"finance": total}, actor)
+                    session.flush()
+                    current = self._snapshot(session, order)
+                else:
+                    current = before
+                if not current["items"] or not current["allocations"]:
                     raise OrderError("Received requires items and balanced allocations")
-                total = self._result(order, before).total
-                allocated = sum((Decimal(a["amount"]) for a in before["allocations"]), Decimal(0))
+                total = self._result(order, current).total
+                allocated = sum((Decimal(a["amount"]) for a in current["allocations"]), Decimal(0))
                 if total != allocated:
                     raise OrderError("Allocations must equal the order total")
-                for line in before["items"]:
+                for line in current["items"]:
                     _positive_int(line["quantity"])
                     _money(Decimal(line["unit_price"]), positive=False)
                     _money(Decimal(line["line_total"]), positive=False)
-                for allocation in before["allocations"]:
+                for allocation in current["allocations"]:
                     if allocation["category"] not in PAYMENT_CODES:
                         raise OrderError("Unknown payment category")
                     _money(Decimal(allocation["amount"]))

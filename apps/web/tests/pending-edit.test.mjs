@@ -74,11 +74,13 @@ test("single and split changes preserve entered amounts and permit incomplete or
   }
 });
 
-test("visitors only save Finance and can leave an incomplete Pending amount", () => {
+test("visitor Finance automatically follows item totals", () => {
   const saved = { ...order(), employee_number: null, visitor_id: 7, allocations: [{ id: 201, category: "finance", amount: "200.00" }] };
   const draft = createDraft(saved);
   assert.equal(draft.single, "finance"); draft.amounts.finance = "50.00";
-  assert.deepEqual(buildEdit(saved, draft).allocations, [{ category: "finance", amount: "50.00" }]);
+  assert.deepEqual(buildEdit(saved, draft).allocations, [{ category: "finance", amount: "200.00" }]);
+  draft.lines[0].quantity = "2";
+  assert.deepEqual(buildEdit(saved, draft).allocations, [{ category: "finance", amount: "250.00" }]);
   draft.amounts.cash = "10.00";
   assert.match(validateDraft(saved, draft).allocations, /Finance only/);
   assert.throws(() => buildEdit(saved, draft));

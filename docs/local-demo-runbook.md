@@ -87,19 +87,19 @@ terminal. It listens only on loopback and does not run migrations at startup.
 ```powershell
 $env:ASI_AUTH_ENABLED = 'true'
 $env:ASI_AUTH_MODE = 'development'
-$env:ASI_AUTH_ORIGINS = 'http://127.0.0.1:3000'
-.\.venv\Scripts\python.exe -m uvicorn asi_meal_api.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers
+$env:ASI_AUTH_ORIGINS = 'http://127.0.0.1:43871'
+.\.venv\Scripts\python.exe -m uvicorn asi_meal_api.main:app --host 127.0.0.1 --port 43872 --no-proxy-headers
 ```
 
 In a second terminal using Node 24, start Next.js from the project root:
 
 ```powershell
-$env:ASI_API_ORIGIN = 'http://127.0.0.1:8000'
+$env:ASI_API_ORIGIN = 'http://127.0.0.1:43872'
 Set-Location C:\asi-meal-management\apps\web
 npm run dev -- --hostname 127.0.0.1
 ```
 
-Open `http://127.0.0.1:3000`. Use that exact origin throughout; `localhost`
+Open `http://127.0.0.1:43871`. Use that exact origin throughout; `localhost`
 is a different origin. These ports must be free, or choose free loopback ports
 and adjust `ASI_AUTH_ORIGINS`, `ASI_API_ORIGIN`, and both server commands
 consistently. Never disable Origin, CSRF or cookie checks.

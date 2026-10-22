@@ -1,5 +1,5 @@
 import type { Allocation, Offering, OrderDetail, OrderResult, Payment, PendingEdit, RequestApi, Role } from "./api";
-import { centavos } from "./meal.ts";
+import { centavos, decimal } from "./meal.ts";
 
 export type DraftLine = {
   key: string; lineId: number | null; offeringId: number; name: string; category: string; unitPrice: string; quantity: string;
@@ -37,7 +37,16 @@ function quantity(value: string): number | null {
   return Number.isSafeInteger(result) && result <= 2147483647 ? result : null;
 }
 export function draftAllocations(draft: PendingDraft, visitor: boolean): Allocation[] {
-  return (visitor ? ["finance"] as Payment[] : draft.split ? codes : [draft.single])
+  if (visitor) {
+    let total = BigInt(0);
+    for (const line of draft.lines) {
+      const count = quantity(line.quantity), price = centavos(line.unitPrice);
+      if (count === null || price === null) return [];
+      total += price * BigInt(count);
+    }
+    return total > BigInt(0) ? [{ category: "finance", amount: decimal(total) }] : [];
+  }
+  return (draft.split ? codes : [draft.single])
     .filter(code => (draft.amounts[code] ?? "").trim() !== "")
     .map(code => ({ category: code, amount: draft.amounts[code]! }));
 }

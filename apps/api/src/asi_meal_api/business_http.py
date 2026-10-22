@@ -84,6 +84,16 @@ def create_visitor(body: s.VisitorIn, request: Request, actor: Actor):
     return directory(request).create_visitor(actor, body.display_name)
 
 
+@directory_router.patch("/visitors/{visitor_id}", response_model=s.VisitorOut)
+def edit_visitor(visitor_id: ResourceId, body: s.VisitorEdit, request: Request, actor: Actor):
+    return directory(request).change_visitor(actor, visitor_id, body.expected_name, body.display_name)
+
+
+@directory_router.delete("/visitors/{visitor_id}", status_code=204)
+def delete_visitor(visitor_id: ResourceId, body: s.VisitorDelete, request: Request, actor: Actor):
+    directory(request).change_visitor(actor, visitor_id, body.expected_name)
+
+
 @menu_router.get("/dishes", response_model=list[s.DishOut])
 def dishes(request: Request, actor: Actor, q: Search = "", limit: Limit = 20, offset: Offset = 0,
            category: s.Category | None = None, active: bool | None = None):
@@ -95,9 +105,24 @@ def create_dish(body: s.DishIn, request: Request, actor: Actor):
     return directory(request).create_dish(actor, body.name, body.category_code)
 
 
+@menu_router.patch("/dishes/{dish_id}", response_model=s.DishOut)
+def edit_dish(dish_id: ResourceId, body: s.DishEdit, request: Request, actor: Actor):
+    return directory(request).change_dish(actor, dish_id, body.expected_name, body.expected_category, body.name, body.category_code)
+
+
+@menu_router.delete("/dishes/{dish_id}", status_code=204)
+def delete_dish(dish_id: ResourceId, body: s.DishDelete, request: Request, actor: Actor):
+    directory(request).change_dish(actor, dish_id, body.expected_name, body.expected_category)
+
+
 @menu_router.post("/menus", response_model=s.MenuOut, status_code=201)
 def create_menu(body: s.MenuIn, request: Request, actor: Actor):
-    return directory(request).create_menu(actor, body.label, body.dish_ids, assignments(body.assignments))
+    return directory(request).create_menu(actor, body.label, body.dish_ids, assignments(body.assignments), body.include_default_rice, [change.model_dump() for change in body.dish_changes])
+
+
+@menu_router.get("/menu-defaults", response_model=s.MenuDefaultsOut)
+def menu_defaults(request: Request, actor: Actor):
+    return directory(request).menu_defaults(actor)
 
 
 @menu_router.put("/menus/{menu_id}/dates", response_model=s.ScheduleOut)
@@ -126,9 +151,25 @@ def create_order(body: s.OrderIn, request: Request, actor: Actor):
 def orders(request: Request, actor: Actor, start: date | None = None, end: date | None = None,
            employee_number: Annotated[str | None, Query(min_length=1, max_length=200, pattern=r"^[^\x00]*$")] = None,
            visitor_id: Annotated[int | None, Query(gt=0, le=9223372036854775807)] = None,
-           status: Literal["pending", "received"] | None = None, limit: Limit = 20, offset: Offset = 0):
+           status: Literal["pending", "received"] | None = None, limit: Limit = 20, offset: Offset = 0,
+           pending_first: bool = False):
     return directory(request).orders(actor, start=start, end=end, employee_number=employee_number, visitor_id=visitor_id,
-        received=None if status is None else status == "received", limit=limit, offset=offset)
+        received=None if status is None else status == "received", limit=limit, offset=offset, pending_first=pending_first)
+
+
+@order_router.get("/overview", response_model=s.OrderOverview)
+def order_overview(day: date, request: Request, actor: Actor):
+    return directory(request).order_overview(actor, day)
+
+
+@order_router.get("/page", response_model=s.OrderPage)
+def orders_page(request: Request, actor: Actor, start: date | None = None, end: date | None = None,
+                employee_number: Annotated[str | None, Query(min_length=1, max_length=200, pattern=r"^[^\x00]*$")] = None,
+                visitor_id: Annotated[int | None, Query(gt=0, le=9223372036854775807)] = None,
+                status: Literal["pending", "received"] | None = None, limit: Limit = 20, offset: Offset = 0,
+                revision: Annotated[str | None, Query(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")] = None):
+    return directory(request).orders_page(actor, start=start, end=end, employee_number=employee_number, visitor_id=visitor_id,
+        received=None if status is None else status == "received", limit=limit, offset=offset, revision=revision)
 
 
 @order_router.get("/{order_id}", response_model=s.OrderDetail)

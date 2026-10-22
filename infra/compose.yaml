@@ -4,14 +4,14 @@ services:
       context: ../apps/web
       dockerfile: ../../infra/web.Dockerfile
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:43871:3000"
 
   api:
     build:
       context: ../apps/api
       dockerfile: ../../infra/api.Dockerfile
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:43872:8000"
 
   db:
     image: postgres:17

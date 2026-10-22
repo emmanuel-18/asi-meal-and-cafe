@@ -39,3 +39,11 @@ test("API errors expose clear status messages without returning sensitive diagno
   await assert.rejects(apiRequest("/api/employees"), error => error.status === 0 && !error.message.includes("synthetic-private"));
   await assert.rejects(apiRequest("https://outside.invalid/api/orders"), /Invalid API path/);
 });
+
+test("visitor and dish conflicts expose only approved explanations", async t => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({ detail: "Visitor is used by an order and cannot be deleted" }, { status: 409 }));
+  await assert.rejects(apiRequest("/api/visitors/1", { method: "DELETE" }), error => error.message === "Visitor is used by an order and cannot be deleted");
+  t.mock.restoreAll();
+  t.mock.method(globalThis, "fetch", async () => Response.json({ detail: "synthetic private detail" }, { status: 409 }));
+  await assert.rejects(apiRequest("/api/dishes/1", { method: "DELETE" }), error => !error.message.includes("synthetic private"));
+});

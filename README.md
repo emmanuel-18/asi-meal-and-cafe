@@ -83,8 +83,8 @@ From the repository root, run:
 docker compose --env-file infra/.env -f infra/compose.yaml up --build -d
 ```
 
-The frontend is available at http://localhost:3000 and the API health endpoint
-at http://localhost:8000/health. PostgreSQL is accessible only to containers on
+The frontend is available at http://127.0.0.1:43871 and the API health endpoint
+at http://127.0.0.1:43872/health. PostgreSQL is accessible only to containers on
 the Compose network; its data persists in a named Docker volume. The current API
 does not yet connect to the database. To stop the services without removing the
 database volume, run:

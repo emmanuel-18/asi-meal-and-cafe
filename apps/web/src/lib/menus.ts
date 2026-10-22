@@ -39,8 +39,8 @@ export function menuInput(label: string, selected: Dish[]): MenuInput {
   if (label.trim().length > 200 || label.includes("\x00")) throw new Error("Use a menu label of at most 200 characters.");
   return { label: label.trim() || null, dish_ids: selected.map(d => d.id) };
 }
-export async function createMenu(request: RequestApi, label: string, selected: Dish[]): Promise<RecordedMenu> {
-  return request<RecordedMenu>("/api/menus", { method: "POST", body: menuInput(label, selected) });
+export async function createMenu(request: RequestApi, label: string, selected: Dish[], includeDefaultRice = false): Promise<RecordedMenu> {
+  return request<RecordedMenu>("/api/menus", { method: "POST", body: { ...menuInput(label, selected), ...(includeDefaultRice ? { include_default_rice: true } : {}) } });
 }
 export function addDate(dates: string[], day: string): string[] {
   const parsed = new Date(`${day}T00:00:00Z`);

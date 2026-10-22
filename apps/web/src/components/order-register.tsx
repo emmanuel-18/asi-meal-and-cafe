@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderDetail, OrderSummary, RequestApi, Session } from "@/lib/api";
+import { listingError, loadOrderPage, receiveError } from "@/lib/order-register";
 import { canConfirm, canReverse, centavos, operationalToday, paymentLabels, pesos, reasons, type Reason } from "@/lib/meal";
 import { canEditPending } from "@/lib/pending-edit";
 import PendingOrderEditor from "./pending-order-editor";
@@ -11,6 +12,9 @@ export default function OrderRegister({ request, session, savedId }: { request: 
   const [status, setStatus] = useState("");
   const [offset, setOffset] = useState(0);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [listingInvalid, setListingInvalid] = useState(false);
+  const [overview, setOverview] = useState<{ pending: number; received: number; total: number; recognized_sales: string } | null>(null);
+  const [overviewError, setOverviewError] = useState("");
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(!!savedId);
   const [loading, setLoading] = useState(true);
@@ -24,19 +28,29 @@ export default function OrderRegister({ request, session, savedId }: { request: 
   const [acknowledged, setAcknowledged] = useState(false);
   const detailRequest = useRef<AbortController | null>(null);
   const mutation = useRef(false);
+  const listingRevision = useRef<string | null>(null);
 
-  const load = useCallback((signal?: AbortSignal) => {
-    const query = new URLSearchParams({ limit: "20", offset: String(offset) });
-    if (day) { query.set("start", day); query.set("end", day); }
-    if (status) query.set("status", status);
-    return request<OrderSummary[]>(`/api/orders?${query}`, { signal }).then(setOrders)
+  const load = useCallback((signal?: AbortSignal, pageOffset = offset) => {
+    if (pageOffset === 0) listingRevision.current = null;
+    return loadOrderPage(request, day, status, pageOffset, listingRevision.current, signal).then(result => {
+      if (!signal?.aborted) { listingRevision.current = result.revision; setListingInvalid(false); setOrders(result.orders); }
+    })
       .finally(() => { if (!signal?.aborted) setLoading(false); });
   }, [day, status, offset, request]);
+
+  const loadOverview = useCallback(async (signal?: AbortSignal) => {
+    if (!day) { setOverview(null); return; }
+    setOverview(null); setOverviewError("");
+    try { const result = await request<{ pending: number; received: number; total: number; recognized_sales: string }>(`/api/orders/overview?day=${encodeURIComponent(day)}`, { signal }); if (!signal?.aborted) setOverview(result); }
+    catch (error) { if (!signal?.aborted) setOverviewError(error instanceof Error ? error.message : "Unable to load date totals."); }
+  }, [day, request]);
+
+  useEffect(() => { const controller = new AbortController(); void Promise.resolve().then(() => { if (!controller.signal.aborted) return loadOverview(controller.signal); }); return () => controller.abort(); }, [loadOverview]);
 
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal).catch(error => {
-      if (!(error instanceof Error && error.name === "AbortError")) { setOrders([]); setError(error instanceof Error ? error.message : "Unable to load orders."); }
+      if (!(error instanceof Error && error.name === "AbortError")) { listingRevision.current = null; setListingInvalid(true); setOrders([]); setError(listingError(error)); }
     });
     return () => controller.abort();
   }, [load]);
@@ -71,36 +85,50 @@ export default function OrderRegister({ request, session, savedId }: { request: 
         { expected_version: detail.version } });
       setDetail(null); setReversing(false); setAcknowledged(false);
       setNotice(`Order #${id} ${reverse ? "returned to Pending" : "marked Received"}.`);
-      await open(id); await load();
+      await open(id); setOffset(0); await Promise.all([load(undefined, 0), loadOverview()]);
     } catch (error) {
       // Re-read after any uncertain write or stale version; never retry with a new version automatically.
       setDetail(null); setReversing(false); setAcknowledged(false);
-      try { await open(id); await load(); } catch { /* The original error remains actionable. */ }
+      try { await open(id); setOffset(0); await Promise.all([load(undefined, 0), loadOverview()]); } catch { /* The original error remains actionable. */ }
       setError(error instanceof Error ? error.message : "The change could not be confirmed. Refresh and review before retrying.");
     } finally { mutation.current = false; setBusy(false); }
   }
 
-  const recognized = orders.filter(o => o.is_received).reduce((sum, order) => sum + (centavos(order.total, false) ?? BigInt(0)), BigInt(0));
-  const pending = orders.filter(o => !o.is_received).reduce((sum, order) => sum + (centavos(order.total, false) ?? BigInt(0)), BigInt(0));
+  async function quickReceive(order: OrderSummary) {
+    if (mutation.current || editing) return;
+    mutation.current = true; setBusy(true); setError(""); setNotice("");
+    let confirmed = false;
+    try {
+      await request(`/api/orders/${order.order_id}/received`, { method: "POST", body: { expected_version: order.version } });
+      confirmed = true;
+      setNotice(`Order #${order.order_id} marked Received.`); setOffset(0);
+      await Promise.all([load(undefined, 0), loadOverview()]);
+      if (detail?.order_id === order.order_id) await open(order.order_id);
+    } catch (error) {
+      setOffset(0); try { await Promise.all([load(undefined, 0), loadOverview()]); await open(order.order_id); } catch { /* Review before retrying. */ }
+      setError(confirmed ? "The order was marked Received, but the register could not refresh. Refresh orders to review." : receiveError(error));
+    } finally { mutation.current = false; setBusy(false); }
+  }
+
   const total = detail?.items.reduce((sum, item) => sum + (centavos(item.line_total) ?? BigInt(0)), BigInt(0)) ?? BigInt(0);
   const allocated = detail?.allocations.reduce((sum, a) => sum + (centavos(a.amount) ?? BigInt(0)), BigInt(0)) ?? BigInt(0);
 
   return <>
     {error && <p className="error" role="alert">{error}</p>}{notice && <p className="notice" role="status">{notice}</p>}
-    <section className="panel"><div className="filter-row"><label>Service date<input type="date" value={day} onChange={e => { setLoading(true); setDay(e.target.value); setOffset(0); setError(""); }} disabled={busy || editing} /></label>
-      <label>Status<select value={status} onChange={e => { setLoading(true); setStatus(e.target.value); setOffset(0); setError(""); }} disabled={busy || editing}>
+    <section className="order-overview" aria-label="Selected service date overview">{!day ? <p>Select a service date for totals.</p> : overviewError ? <p role="alert" className="error">Date totals: {overviewError}</p> : !overview ? <p role="status">Loading date totals...</p> : <><div><span>Pending</span><strong>{overview.pending}</strong></div><div><span>Received</span><strong>{overview.received}</strong></div><div><span>Total orders</span><strong>{overview.total}</strong></div><div><span>Recognized sales</span><strong>{pesos(overview.recognized_sales)}</strong></div></>}</section>
+    <section className="panel"><div className="filter-row"><label>Service date<input type="date" value={day} onChange={e => { listingRevision.current = null; setLoading(true); setDay(e.target.value); setOffset(0); setError(""); }} disabled={busy || editing} /></label>
+      <label>Status<select value={status} onChange={e => { listingRevision.current = null; setLoading(true); setStatus(e.target.value); setOffset(0); setError(""); }} disabled={busy || editing}>
         <option value="">All statuses</option><option value="pending">Pending</option><option value="received">Received</option></select></label>
-      <button type="button" className="secondary" disabled={loading || busy || editing} onClick={() => { setLoading(true); setError(""); void load().catch(e => setError(e.message)); }}>Refresh orders</button></div>
+      <button type="button" className="secondary" disabled={loading || busy || editing} onClick={() => { setLoading(true); setError(""); setOffset(0); void load(undefined, 0).catch(e => setError(e.message)); void loadOverview(); }}>Refresh orders</button></div>
       {loading ? <p role="status">Loading orders…</p> : !orders.length ? <p role="status" className="muted">No orders match these filters.</p> : <>
         <div className="table-scroll" role="region" aria-label="Orders matching selected filters" tabIndex={0}><table><caption className="sr-only">Orders matching selected filters</caption><thead><tr>
-          <th scope="col">Order</th><th scope="col">Service date</th><th scope="col">Customer</th><th scope="col">Status</th><th scope="col">Total</th><th scope="col">Action</th>
-        </tr></thead><tbody>{orders.map(order => <tr key={order.order_id}><td>#{order.order_id}</td><td>{order.service_date}</td>
+          <th scope="col">Order</th><th scope="col">Service date</th><th scope="col">Customer</th><th scope="col">Status</th><th scope="col" className="numeric">Total</th><th scope="col">Action</th>
+        </tr></thead><tbody>{orders.map(order => <tr key={order.order_id} className={`order-row${detail?.order_id === order.order_id ? " selected" : ""}`} tabIndex={busy || editing ? -1 : 0} aria-label={`Open order ${order.order_id}`} onClick={() => { if (!busy && !editing) void open(order.order_id); }} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); if (!busy && !editing) void open(order.order_id); } }}><td>#{order.order_id}</td><td>{order.service_date}</td>
           <td>{order.customer_name}<small>{order.employee_number ?? `Visitor #${order.visitor_id}`}</small></td>
-          <td><span className={`badge ${order.is_received ? "received" : "pending"}`}>{order.is_received ? "Received" : "Pending"}</span></td><td>{pesos(order.total)}</td>
-          <td><button type="button" className="secondary" disabled={busy || editing} onClick={() => void open(order.order_id)} aria-label={`View order ${order.order_id}`}>View</button></td></tr>)}</tbody></table></div>
-        <p className="page-totals">This page only: Received {pesos(recognized)} · Pending {pesos(pending)}</p>
+          <td><span className={`badge ${order.is_received ? "received" : "pending"}`}>{order.is_received ? "Received" : "Pending"}</span></td><td className="numeric">{pesos(order.total)}</td>
+          <td>{!order.is_received && <button type="button" disabled={busy || editing} onClick={event => { event.stopPropagation(); void quickReceive(order); }} aria-label={`Mark order ${order.order_id} Received`}>Mark Received</button>}</td></tr>)}</tbody></table></div>
       </>}
-      <div className="pagination"><button type="button" className="secondary" disabled={offset === 0 || loading || busy || editing} onClick={() => { setLoading(true); setOffset(Math.max(0, offset - 20)); }}>Previous</button>
+      <div className="pagination"><button type="button" className="secondary" disabled={listingInvalid || offset === 0 || loading || busy || editing} onClick={() => { setLoading(true); setOffset(Math.max(0, offset - 20)); }}>Previous</button>
         <span>Page {offset / 20 + 1}</span><button type="button" className="secondary" disabled={orders.length < 20 || offset >= 10000 || loading || busy || editing} onClick={() => { setLoading(true); setOffset(offset + 20); }}>Next</button></div>
     </section>
     {detailLoading && <p role="status">Loading order details…</p>}
@@ -108,16 +136,17 @@ export default function OrderRegister({ request, session, savedId }: { request: 
       <button type="button" className="secondary" disabled={busy || editing} onClick={() => { detailRequest.current?.abort(); setDetail(null); }}>Close details</button></div>
       <p><strong>{detail.customer_name}</strong> · {detail.employee_number ?? `Visitor #${detail.visitor_id}`} · {detail.service_date}</p>
       <p><span className={`badge ${detail.is_received ? "received" : "pending"}`}>{detail.is_received ? "Received" : "Pending"}</span> <span className="muted">Version {detail.version}</span></p>
-      <div className="table-scroll" role="region" aria-label="Saved order items" tabIndex={0}><table><caption className="sr-only">Saved order items</caption><thead><tr><th scope="col">Item</th><th scope="col">Unit price</th><th scope="col">Quantity</th><th scope="col">Line total</th></tr></thead>
-        <tbody>{detail.items.map(item => <tr key={item.id}><th scope="row">{item.name}<small>{item.category.replaceAll("_", " ")}</small></th><td>{pesos(item.unit_price)}</td><td>{item.quantity}</td><td>{pesos(item.line_total)}</td></tr>)}</tbody></table></div>
+      <div className="table-scroll" role="region" aria-label="Saved order items" tabIndex={0}><table><caption className="sr-only">Saved order items</caption><thead><tr><th scope="col">Item</th><th scope="col" className="numeric">Unit price</th><th scope="col" className="numeric">Quantity</th><th scope="col" className="numeric">Line total</th></tr></thead>
+        <tbody>{detail.items.map(item => <tr key={item.id}><th scope="row">{item.name}<small>{item.category.replaceAll("_", " ")}</small></th><td className="numeric">{pesos(item.unit_price)}</td><td className="numeric">{item.quantity}</td><td className="numeric">{pesos(item.line_total)}</td></tr>)}</tbody></table></div>
       <p className="total">Saved order total <strong>{pesos(total)}</strong></p><h4>Recorded allocations</h4>
       {!detail.allocations.length ? <p className="muted">No allocations recorded.</p> : <ul className="allocation-list">{detail.allocations.map(a => <li key={a.id}>{paymentLabels[a.category]} <strong>{pesos(a.amount)}</strong></li>)}</ul>}
-      <p>Allocated {pesos(allocated)} · Difference {pesos(total - allocated)}</p>
+      <div className="allocation-summary"><span>Allocated <strong>{pesos(allocated)}</strong></span><span>Difference <strong>{pesos(total - allocated)}</strong></span></div>
       {editing && canEditPending(session.user.role, detail.is_received) ? <PendingOrderEditor key={`${detail.order_id}-${detail.version}`} order={detail} request={request}
         onCancel={() => setEditing(false)} onReload={async () => { await open(detail.order_id); try { await load(); } catch { setError("Unable to refresh the register. Please retry."); } }}
         onSaved={async saved => {
           setEditing(false); setDetail(saved); setNotice(`Order #${saved.order_id} changes saved. Current version ${saved.version}.`); setError(""); setBusy(true);
-          try { await load(); } catch { setOrders([]); setError("The order was saved, but the register could not refresh. Refresh orders to update the list."); }
+          setOffset(0);
+          try { await load(undefined, 0); } catch { setOrders([]); setError("The order was saved, but the register could not refresh. Refresh orders to update the list."); }
           finally { setBusy(false); }
         }} /> : !detail.is_received && <div className="action-bar"><p className="muted">Confirm only after meal handover and completion.</p>
         <div className="button-row">{canEditPending(session.user.role, detail.is_received) && <button type="button" className="secondary" disabled={busy || loading}

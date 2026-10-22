@@ -43,7 +43,7 @@ export default function EmployeeDirectory({ request, role }: { request: RequestA
     } finally { setImporting(false); }
   }
 
-  return <><div className="section-heading"><h2>Employees</h2></div>
+  return <><div className="section-heading"><div><h2>Employees</h2><p className="muted">Search employee details imported from HRMS.</p></div></div>
     <section className="panel"><h3>Employee directory</h3>
       <form className="filter-row" onSubmit={event => { event.preventDefault(); setError(""); setLoading(true); setPage(0); setSearch(query.trim()); setRevision(value => value + 1); }}>
         <label className="grow">Employee number or name<input value={query} onChange={event => setQuery(event.target.value)} maxLength={100} /></label>

@@ -1,92 +1,107 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ApiError, type Dish, type Menu, type RecordedMenu, type RequestApi } from "@/lib/api";
-import { categoryLabels, createMenu, referencePrices, selectDish } from "@/lib/menus";
-import { pesos } from "@/lib/meal";
+import { useEffect, useRef, useState } from "react";
+import { ApiError, type Dish, type Menu, type RequestApi } from "@/lib/api";
+import { dailyMenu, defaultRicePrice, editableMenuDishes, saveDailyMenu, type DraftDishChange } from "@/lib/daily-menu";
+import { categoryLabels, searchDishes, selectDish } from "@/lib/menus";
+import { operationalToday, pesos } from "@/lib/meal";
 import DishCatalog from "./dish-catalog";
 import MenuScheduling from "./menu-scheduling";
 
-export default function MenuWorkspace({ request }: { request: RequestApi }) {
+export default function MenuWorkspace({ request, initialDate, onSaved }: { request: RequestApi; initialDate?: string; onSaved?: () => void }) {
+  const [day, setDay] = useState(initialDate || operationalToday);
+  const [snapshot, setSnapshot] = useState<{ day: string; menu: Menu | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<Dish[]>([]);
-  const [label, setLabel] = useState("");
-  const [menu, setMenu] = useState<RecordedMenu | null>(null);
-  const [menuId, setMenuId] = useState("");
-  const [inspectDate, setInspectDate] = useState("");
-  const [inspectedDate, setInspectedDate] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [ricePrice, setRicePrice] = useState<string | null>(null);
+  const [changes, setChanges] = useState<DraftDishChange[]>([]);
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [dishBusy, setDishBusy] = useState(false);
-  const [inspecting, setInspecting] = useState(false);
-  const [draftSaved, setDraftSaved] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const submitting = useRef(false);
+  const operation = useRef(false);
+  const lookupSequence = useRef(0);
+  const current = snapshot?.day === day ? snapshot.menu : undefined;
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const sequence = ++lookupSequence.current;
+    void dailyMenu(request, day, controller.signal).then(menu => {
+      if (!controller.signal.aborted && sequence === lookupSequence.current) {
+        setSnapshot({ day, menu });
+      }
+    }).catch(error => {
+      if (!controller.signal.aborted && sequence === lookupSequence.current) setError(error instanceof Error ? error.message : "Unable to load the menu.");
+    }).finally(() => { if (!controller.signal.aborted && sequence === lookupSequence.current) setLoading(false); });
+    return () => controller.abort();
+  }, [day, revision, request]);
+
+  async function begin() {
+    if (operation.current || current === undefined) return;
+    operation.current = true; setBusy(true); setError(""); setNotice("");
+    try {
+      const catalog = current ? await searchDishes(request, { q: "", category: "", active: "" }) : null;
+      const original = current && catalog ? editableMenuDishes(current, catalog.dishes) : [];
+      const price = await defaultRicePrice(request);
+      setRicePrice(price); setSelected(original); setChanges([]); setEditing(true); setConfirmed(false);
+    } catch (error) { setError(error instanceof Error ? error.message : "Unable to check Extra Rice. Retry before editing."); }
+    finally { operation.current = false; setBusy(false); }
+  }
   function choose(dish: Dish) {
-    setSelected(current => current.some(item => item.id === dish.id) || current.length >= 100 ? current : selectDish(current, dish));
-    setDraftSaved(false);
+    setSelected(items => items.some(item => item.id === dish.id) ? items.filter(item => item.id !== dish.id) : selectDish(items, dish));
+    setConfirmed(false);
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (submitting.current || blocked || draftSaved || dishBusy) return;
-    submitting.current = true; setCreating(true); setError(""); setNotice("");
+    if (operation.current || blocked || dishBusy || current === undefined || (current && !confirmed)) return;
+    operation.current = true; setBusy(true); setError(""); setNotice("");
     try {
-      const saved = await createMenu(request, label, selected);
-      setMenu(saved); setMenuId(String(saved.id)); setInspectedDate(null); setDraftSaved(true);
-      setNotice(`Menu #${saved.id} created. Review its actual backend-configured prices below, then choose service dates.`);
+      await saveDailyMenu(request, day, current?.id ?? null, selected, changes);
+      setChanges([]); setEditing(false); onSaved?.();
+      try { setSnapshot({ day, menu: await dailyMenu(request, day) }); setNotice("Menu saved and available for Orders."); }
+      catch { setError("The menu was assigned, but the current menu could not be refreshed. Use Refresh to review it."); }
     } catch (error) {
-      const uncertain = error instanceof ApiError && (error.status === 0 || error.status >= 500);
-      setBlocked(uncertain);
-      setError(uncertain ? "The menu creation result could not be confirmed. No automatic retry was sent. The API has no menu index or creation request key; confirm the outcome before starting another definition." :
-        error instanceof ApiError && error.status === 409 ? "A selected dish may have changed or become inactive. Search the catalog again, remove any outdated selection and review the new definition before saving." :
-        error instanceof Error ? error.message : "Unable to save menu.");
-    } finally { submitting.current = false; setCreating(false); }
+      if (error instanceof ApiError && (error.status === 0 || error.status >= 500)) {
+        setBlocked(true); setError("The save could not be confirmed. Refresh and review the saved menu and catalog before trying again.");
+      } else setError(error instanceof Error ? error.message : "Unable to save the menu.");
+    }
+    finally { operation.current = false; setBusy(false); }
   }
-  async function inspect(byDate: boolean, event: React.FormEvent) {
-    event.preventDefault(); if (submitting.current) return;
-    if (!byDate && (!/^[1-9]\d*$/.test(menuId) || !Number.isSafeInteger(Number(menuId)))) { setError("Enter a valid menu ID."); return; }
-    submitting.current = true; setInspecting(true); setError(""); setNotice(""); setMenu(null); setInspectedDate(null);
-    try {
-      const saved = await request<RecordedMenu | Menu>(byDate ? `/api/menus/by-date/${inspectDate}` : `/api/menus/${menuId}`);
-      setMenu(saved); setMenuId(String(saved.id)); setInspectedDate(byDate ? inspectDate : null);
-    } catch (error) {
-      setError(error instanceof ApiError && error.status === 404 ? byDate ? "No menu is assigned to this service date." : "No menu exists with this ID." : error instanceof Error ? error.message : "Unable to inspect menu.");
-    } finally { submitting.current = false; setInspecting(false); }
-  }
+  function refresh() { setLoading(true); setError(""); setConfirmed(false); setRevision(value => value + 1); }
 
-  return <>
-    <div className="section-heading"><h2>Menu and dish management</h2></div>
-    {error && <p className="error" role="alert">{error}</p>}{notice && <p className="notice" role="status">{notice}</p>}
-    <DishCatalog request={request} selected={selected} onSelect={choose} disabled={creating || inspecting || blocked} onBusy={setDishBusy} />
-    <section className="panel"><h3>Review new menu</h3>
-      <p className="muted">Each save creates a new reusable definition. Existing menus and their assigned dates are unchanged until an explicit date assignment.</p>
-      <form onSubmit={save}><fieldset className="entry-fields" disabled={creating || inspecting || dishBusy || blocked}><legend className="sr-only">New menu definition</legend>
-        <label>Menu label (optional)<input value={label} maxLength={200} onChange={e => { setLabel(e.target.value); setDraftSaved(false); }} /></label>
-        <p>{selected.length} / 100 dishes selected.</p>
-        {!selected.length ? <p className="muted">Select dishes above, or create and select a reusable dish.</p> : <div className="table-scroll" role="region" aria-label="Selected dishes" tabIndex={0}><table><caption className="sr-only">Review selected dishes before saving</caption>
-          <thead><tr><th scope="col">Dish</th><th scope="col">Catalog category</th><th scope="col">Reference price</th><th scope="col">Action</th></tr></thead>
-          <tbody>{selected.map(dish => <tr key={dish.id}><th scope="row">{dish.name}</th><td>{categoryLabels[dish.category_code]}</td><td>{pesos(referencePrices[dish.category_code])}</td>
-            <td><button type="button" className="secondary" onClick={() => { setSelected(current => current.filter(item => item.id !== dish.id)); setDraftSaved(false); }} aria-label={`Remove selected ${dish.name}`}>Remove</button></td></tr>)}</tbody></table></div>}
-        <p className="notice">Reference prices are the approved starting values: Vegetable ₱50, Non-vegetable ₱75, Extra Rice ₱15. The API does not expose current category defaults before saving. The server determines actual menu categories and prices; inspect the saved values before assigning dates.</p>
-        <button type="submit" disabled={creating || inspecting || dishBusy || blocked || draftSaved || !selected.length}>{creating ? "Saving…" : draftSaved ? "New menu saved" : "Save new menu"}</button>
-      </fieldset></form>
-      <button type="button" className="text-button" disabled={creating || inspecting || dishBusy} onClick={() => { setSelected([]); setLabel(""); setDraftSaved(false); setBlocked(false); setError(""); }}>Start a separate new definition</button>
+  return <div className="daily-menu-workspace">
+    <div className="section-heading"><div><h2>Today’s menu</h2><p className="muted">Review meals available for the selected service date.</p></div></div>
+    <section className="panel"><div className="inline-form"><label>Service date<input type="date" value={day} required disabled={busy || dishBusy || blocked}
+      onChange={e => { if (editing && !window.confirm("Changing date discards unsaved menu selections. Continue?")) return;
+        setDay(e.target.value); setLoading(true); setEditing(false); setSelected([]); setConfirmed(false); setError(""); setNotice(""); }} /></label>
+      <button type="button" className="secondary" disabled={busy || !day} onClick={refresh}>Refresh menu</button>
+      <button type="button" disabled={busy || loading || current === undefined || editing || blocked} onClick={() => void begin()}>Add meals</button></div>
+      {loading && <p role="status">Loading menu…</p>}
+      {error && <p className="error" role="alert">{error} {(!busy && !blocked) && <button type="button" className="text-button" onClick={refresh}>Refresh and review</button>}</p>}
+      {notice && <p className="notice" role="status">{notice}</p>}
+      {snapshot?.day === day && <div className="daily-menu-summary"><h3>Saved meals available</h3>{snapshot.menu ? <>
+        {(["vegetable", "non_vegetable", "extra_rice"] as const).map(category => <div key={category}><h4>{categoryLabels[category]}</h4>
+          {snapshot.menu!.items.filter(item => item.category_code === category).length ? <ul>{snapshot.menu!.items.filter(item => item.category_code === category).map(item =>
+            <li key={item.id}>{item.item_name} · {pesos(item.unit_price)}</li>)}</ul> : <p className="muted">None scheduled.</p>}</div>)}
+        </> : <p>No meals have been scheduled for this date. Choose Add meals to prepare a menu.</p>}</div>}
+      {snapshot && snapshot.day !== day && error && <p className="muted">The last reliably loaded menu was for {snapshot.day}; refresh the selected date before editing.</p>}
     </section>
-    <section className="panel"><h3>Inspect an existing menu</h3>
-      <div className="menu-inspection"><form className="inline-form" onSubmit={e => void inspect(false, e)}><label className="grow">Saved menu ID<input inputMode="numeric" value={menuId} onChange={e => setMenuId(e.target.value)} required maxLength={19} disabled={creating || inspecting} /></label>
-        <button type="submit" className="secondary" disabled={creating || inspecting || !menuId}>Load menu</button></form>
-        <form className="inline-form" onSubmit={e => void inspect(true, e)}><label className="grow">Inspect service date<input type="date" value={inspectDate} onChange={e => setInspectDate(e.target.value)} required disabled={creating || inspecting} /></label>
-          <button type="submit" className="secondary" disabled={creating || inspecting || !inspectDate}>Inspect date</button></form></div>
-      <p className="muted">Menus can be loaded by ID or assigned date; the current API has no menu index.</p>
-      {inspecting && <p role="status">Loading saved menu…</p>}
-      {menu && <div className="saved-menu"><h4>Saved menu #{menu.id}{menu.label ? ` · ${menu.label}` : ""}</h4>{inspectedDate && <p>Currently assigned to {inspectedDate}.</p>}
-        {!menu.items.length ? <p className="muted">This saved menu has no offerings.</p> : <div className="table-scroll" role="region" aria-label="Saved menu offerings" tabIndex={0}><table><caption>Actual saved offerings from the backend</caption>
-          <thead><tr><th scope="col">Offering</th><th scope="col">Configured category</th><th scope="col">Configured price</th></tr></thead>
-          <tbody>{menu.items.map(item => <tr key={item.id}><th scope="row">{item.item_name}</th><td>{categoryLabels[item.category_code]}</td><td>{pesos(item.unit_price)}</td></tr>)}</tbody></table></div>}
-        <p className="muted">To change offerings, select dishes for a separate new definition above, save it, then reassign only the intended dates. Saved offerings are read-only here.</p>
-      </div>}
-    </section>
-    {menu && <MenuScheduling key={menu.id} menu={menu} request={request} />}
-  </>;
+    {editing && <><div className="daily-menu-columns"><DishCatalog request={request} selected={selected} changes={changes} onSelect={choose} onCatalogChange={(original, dish) => { setChanges(items => [...items.filter(item => item.original.id !== original.id), { original, updated: dish }]); setSelected(items => items.flatMap(item => item.id === original.id ? dish ? [dish] : [] : [item])); setConfirmed(false); }} disabled={busy || blocked} onBusy={setDishBusy} />
+      <section className="panel"><h3>Selected meals · unsaved</h3><p>{selected.length} / 99 selected</p>
+        {current && <p className="muted">Selections use active catalog dishes and current configured prices. Inactive dishes are excluded from this draft. Historical orders remain unchanged.</p>}
+        <p>Extra Rice - {ricePrice === null ? "Price unavailable" : pesos(ricePrice)} - Always included</p>
+        {current?.items.some(item => item.category_code === "extra_rice") && <p className="muted">The new menu will include one default Extra Rice offering. The saved menu remains unchanged.</p>}
+        <ul className="daily-selection">{selected.map(dish => <li key={dish.id}><span>{dish.name} · {categoryLabels[dish.category_code]}{!dish.is_active ? " · Inactive; remove before saving" : ""}</span>
+          {<button type="button" className="secondary" disabled={busy || blocked} onClick={() => choose(dish)}>Unselect</button>}</li>)}</ul>
+        <p className="muted">Draft changes do not affect Orders. The current Extra Rice price is applied when saved.</p>
+        <form onSubmit={save}>{current && <label className="check-label"><input type="checkbox" checked={confirmed} disabled={busy || loading} onChange={e => setConfirmed(e.target.checked)} />Confirm replacement of the saved menu for {day}.</label>}
+          <button type="submit" disabled={busy || loading || dishBusy || blocked || selected.length > 99 || selected.some(dish => !dish.is_active) || current === undefined || (!!current && !confirmed)}>{busy ? "Saving…" : "Save menu"}</button></form>
+        {!blocked && <button type="button" className="text-button" disabled={busy || dishBusy} onClick={() => { setEditing(false); setSelected([]); setChanges([]); setNotice(""); }}>Discard draft</button>}
+      </section></div></>}
+    {snapshot?.day === day && snapshot.menu && <details><summary>Schedule this saved menu for more dates</summary><MenuScheduling key={snapshot.menu.id} menu={snapshot.menu} request={request} /></details>}
+  </div>;
 }

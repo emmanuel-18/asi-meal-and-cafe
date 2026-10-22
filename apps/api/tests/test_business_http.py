@@ -52,7 +52,12 @@ def requests(g):
     return [
         ("GET", "/api/employees", None), ("POST", "/api/employees/import", None),
         ("GET", "/api/visitors", None), ("POST", "/api/visitors", {"display_name": "Synthetic Guest"}),
+        ("PATCH", f'/api/visitors/{g["visitor"]}', {"display_name": "Synthetic Renamed", "expected_name": "Synthetic Visitor"}),
+        ("DELETE", f'/api/visitors/{g["visitor"]}', {"expected_name": "Synthetic Visitor"}),
         ("GET", "/api/dishes", None), ("POST", "/api/dishes", {"name": "Synthetic Dish", "category_code": "vegetable"}),
+        ("PATCH", f'/api/dishes/{g["dishes"][0]}', {"name": "Synthetic New", "category_code": "vegetable", "expected_name": "Synthetic vegetable", "expected_category": "vegetable"}),
+        ("DELETE", f'/api/dishes/{g["dishes"][0]}', {"expected_name": "Synthetic vegetable", "expected_category": "vegetable"}),
+        ("GET", "/api/menu-defaults", None),
         ("POST", "/api/menus", {"dish_ids": [g["dishes"][0]]}),
         ("PUT", f'/api/menus/{g["menu"]}/dates', {"assignments": [{"service_date": "2040-01-03", "expected_menu_id": None}]}),
         ("GET", "/api/menus/by-date/2040-01-02", None), ("GET", "/api/orders", None),
@@ -103,17 +108,13 @@ def test_routine_catalog_visitors_orders_and_reports_both_roles(auth_env, role):
                               allocations=[{"category": "finance", "amount": "245.00"}])
             created = c.post("/api/orders", json=body, headers=h)
             assert created.status_code == 201, created.text
-            # Both roles can complete a Pending allocation set through HTTP.
+            # Both roles can mark a visitor order Received even if its old allocation is incomplete.
             edited = c.patch(f'/api/orders/{created.json()["order_id"]}', json={"expected_version": 1,
                 "allocations": [{"category": "finance", "amount": "240.00"}]}, headers=h)
             assert edited.status_code == 200 and edited.json()["version"] == 2
             assert c.post(f'/api/orders/{created.json()["order_id"]}/received',
-                          json={"expected_version": 2}, headers=h).status_code == 422
-            completed = c.patch(f'/api/orders/{created.json()["order_id"]}', json={"expected_version": 2,
-                "allocations": [{"category": "finance", "amount": "245.00"}]}, headers=h)
-            assert completed.status_code == 200 and completed.json()["version"] == 3
-            assert c.post(f'/api/orders/{created.json()["order_id"]}/received',
-                          json={"expected_version": 3}, headers=h).status_code == 200
+                          json={"expected_version": 2}, headers=h).status_code == 200
+            assert c.get(f'/api/orders/{created.json()["order_id"]}').json()['allocations'][0]['amount'] == '245.00'
         assert len(c.get("/api/visitors?q=Reusable").json()) == 1
         dish = c.post("/api/dishes", json={"name": "Synthetic Lunch", "category_code": "vegetable"}, headers=h)
         assert dish.status_code == 201 and dish.json()["is_active"] is True

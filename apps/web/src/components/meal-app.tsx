@@ -5,14 +5,9 @@ import { ApiError, apiRequest, type ApiOptions, type RequestApi, type Session } 
 import OrderEntry from "./order-entry";
 import OrderRegister from "./order-register";
 import MenuWorkspace from "./menu-workspace";
-import EmployeeDirectory from "./employee-directory";
+import CustomersWorkspace from "./customers-workspace";
 import ReportsWorkspace from "./reports-workspace";
-
-const sections = ["Orders", "Menu", "Employees", "Visitors", "Reports"] as const;
-type Section = typeof sections[number];
-const deferred: Record<Exclude<Section, "Orders" | "Menu" | "Employees" | "Reports">, string> = {
-  Visitors: "A dedicated visitor directory screen is planned for a later stage. Search, select, or create a visitor during order entry.",
-};
+import AppNavigation, { type Section } from "./app-navigation";
 
 export default function MealApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -22,6 +17,9 @@ export default function MealApp() {
   const [entry, setEntry] = useState(false);
   const [savedId, setSavedId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [menuDate, setMenuDate] = useState<string | undefined>();
+  const [menuRevision, setMenuRevision] = useState(0);
+  const menuSaved = useCallback(() => setMenuRevision(value => value + 1), []);
   const authEpoch = useRef(0);
   const authenticated = useRef(false);
   const csrf = session?.csrf_token;
@@ -89,28 +87,25 @@ export default function MealApp() {
     finally { setBusy(false); }
   }
 
-  return <>
+  return <div className={`app-shell${session ? "" : " is-signed-out"}`}>
     <a className="skip-link" href="#main">Skip to content</a>
-    <header className="app-header"><div className="brand"><h1>ASI Meal Management</h1><p>Meal Sales &amp; Payment Tracking</p></div>
-      {session && <div className="account"><span>{session.user.display_name}<small>{session.user.role === "admin" ? "Admin" : "Assistant Admin"}</small></span>
-        <button type="button" className="secondary" onClick={() => void logout()} disabled={busy}>Sign out</button></div>}
-    </header>
-    {session && <nav className="app-nav" aria-label="Application">{sections.map(name => <button key={name} type="button"
-      aria-current={section === name ? "page" : undefined} onClick={() => setSection(name)}>{name}</button>)}</nav>}
+    {!session && <header className="app-header login-header"><div className="brand"><h1>ASI Meal Management</h1><p>Meal Sales &amp; Payment Tracking</p></div></header>}
+    {session && <AppNavigation session={session} section={section} onSelect={setSection} onLogout={() => void logout()} busy={busy} />}
     <main id="main" tabIndex={-1} className={session ? "workspace" : "login-space"}>
-      {notice && <div className="notice" role="status">{notice}<button type="button" className="text-button" onClick={() => void check()}>Check session</button></div>}
+      {notice && <div className={`notice${notice === "Signed out." ? " signed-out-notice" : ""}`} role="status">{notice}{notice !== "Signed out." && <button type="button" className="text-button" onClick={() => void check()}>Try again</button>}</div>}
       {checking ? <p role="status">Checking session…</p> : !session ? <section className="panel login-panel">
-        <h2>Sign in</h2><p className="muted">Use your individual ASI Meal account.</p>
+        <h2>Sign in</h2><p className="muted">Enter your individual ASI Meal account details.</p>
         <form onSubmit={login}><label>Login name<input name="login_name" required maxLength={255} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
           <label>Password<input name="password" type="password" required maxLength={1024} autoComplete="current-password" /></label>
           <button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button></form>
-      </section> : section === "Menu" ? <MenuWorkspace request={request} /> : section === "Employees" ? <EmployeeDirectory request={request} role={session.user.role} /> : section === "Reports" ? <ReportsWorkspace request={request} /> : section !== "Orders" ? <section className="panel"><h2>{section}</h2><p>{deferred[section]}</p><p className="muted">Not implemented in this stage.</p></section> : <>
-        <div className="section-heading"><h2>{entry ? "New meal order" : "Orders"}</h2>
-          <button type="button" className={entry ? "secondary" : ""} onClick={() => { setEntry(!entry); setSavedId(null); }}>
+      </section> : section === "Menu" ? <MenuWorkspace request={request} initialDate={menuDate} onSaved={menuSaved} /> : section === "Customers" ? <CustomersWorkspace request={request} role={session.user.role} /> : section === "Reports" ? <ReportsWorkspace request={request} /> : <>
+        <div className="section-heading"><div><h2>{entry ? "New meal order" : "Orders"}</h2><p className="muted">{entry ? "Choose a customer, select items, then review payment allocations." : "Find orders, review details, and record meal handover."}</p></div>
+          <button type="button" className={entry ? "secondary" : "brand-accent"} onClick={() => { setEntry(!entry); setSavedId(null); }}>
             {entry ? "Back to orders" : "New order"}</button></div>
-        {entry ? <OrderEntry request={request} onSaved={id => { setSavedId(id); setEntry(false); }} /> :
-          <OrderRegister request={request} session={session} savedId={savedId} />}
+        {!entry && <OrderRegister request={request} session={session} savedId={savedId} />}
       </>}
+      {session && entry && <div hidden={section !== "Orders"}><OrderEntry request={request} menuRevision={menuRevision}
+        onConfigureMenu={day => { setMenuDate(day); setSection("Menu"); }} onSaved={id => { setSavedId(id); setEntry(false); }} /></div>}
     </main>
-  </>;
+  </div>;
 }

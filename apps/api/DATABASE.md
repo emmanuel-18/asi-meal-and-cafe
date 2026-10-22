@@ -97,6 +97,9 @@ The service requires a literal checked boolean for reversal; no UI exists yet.
   categories. Visitors use Finance only. Amounts are Decimal with exact centavos;
   quantities are positive database integers. Pending allocations may be incomplete;
   Received requires positive allocations summing exactly to the snapshot total.
+  When a visitor order is marked Received, Finance is set to its recorded item
+  total in the same transaction, with the allocation change in the receipt audit's
+  before/after snapshots. Employee allocations remain subject to the balance check.
 - Edits accept quantity changes, added/removed lines, and a replacement allocation
   set. `allocations=None` preserves it; `()` clears it while Pending. No customer,
   date/menu, snapshot price, identity or metadata edit fields are accepted. Existing
@@ -313,7 +316,7 @@ All `/api/` operations require the real Stage 5 session. Unsafe methods also
 require an allowed `Origin` and the session's `X-CSRF-Token`. Actor identity comes
 from that session; each service rechecks stored enabled/role state within its own
 transaction. Both roles have routine access; CSV imports and Received reversals
-are Admin-only. There are no account-management, audit-history, category-change,
+are Admin-only. There are no account-management, audit-history,
 price-override or historical snapshot-edit endpoints. All API responses use
 `Cache-Control: no-store`; cookie and deployment configuration are unchanged.
 
@@ -322,12 +325,16 @@ price-override or historical snapshot-edit endpoints. All API responses use
 | GET | `/api/employees` | Minimal directory; employee number/name substring search. |
 | POST | `/api/employees/import` | Admin-only existing whole-file importer. |
 | GET, POST | `/api/visitors` | Search/reuse stable visitor IDs; audited creation with display name only. |
+| PATCH, DELETE | `/api/visitors/{visitor_id}` | Rename or delete an unreferenced visitor; the expected name detects stale changes. |
 | GET, POST | `/api/dishes` | Search/filter category/active flag; audited creation in an approved category. |
+| PATCH, DELETE | `/api/dishes/{dish_id}` | Rename/reclassify a meal dish; delete unused dishes or deactivate those retained by saved menus. |
+| GET | `/api/menu-defaults` | Read the current configured Extra Rice category price. |
 | POST | `/api/menus` | Configure a new definition from selected dish IDs, optionally assign explicit dates. |
 | PUT | `/api/menus/{menu_id}/dates` | Assign that menu to one or multiple explicitly selected dates. |
 | GET | `/api/menus/by-date/{service_date}` | Assigned menu and retained offering names/categories/prices. |
 | GET | `/api/menus/{menu_id}` | Retained offerings by recorded menu ID; Stage 7B contract gap fix for editing after date reassignment. |
 | GET, POST | `/api/orders` | Filter/list or create Pending using the existing order service. |
+| GET | `/api/orders/page` | Pending-first register page with a filter-bound listing revision. |
 | GET, PATCH | `/api/orders/{order_id}` | Recorded details/allocations or approved Pending edits. |
 | POST | `/api/orders/{order_id}/received` | Both roles; expected version required. |
 | POST | `/api/orders/{order_id}/reverse-received` | Admin; expected version, predefined reason, checked acknowledgement; nonblank Other explanation. |
@@ -345,6 +352,17 @@ leading zeros survive. Visitor reuse means selecting an existing ID; equal names
 are not automatically merged or treated as a unique identity. Explicit creation
 creates a new visitor; staff can search first. No merge policy is introduced.
 
+The register's `/api/orders/page` returns `{orders, revision}`. The first page
+uses offset 0 without a revision; later pages require the returned 64-character
+revision and identical filters and page size. Malformed or missing revisions
+are rejected; a changed listing returns 409 and requires restarting at page 1.
+The fingerprint covers matching order IDs, dates, statuses and versions, and is
+calculated in the same repeatable-read transaction as the page. Changes after a
+response are detected on the next page request, not pushed to an already displayed
+page. The fingerprint scans all matching orders, so very large result sets may
+require a future performance review. Legacy `/api/orders` offset pagination
+remains available but does not provide this consistency guarantee.
+
 Menu input contains `label`, `dish_ids` (1–100 distinct IDs), and optional
 `assignments`. Each assignment contains `service_date` and **required**
 `expected_menu_id`: null asserts an unassigned date; an ID asserts its current
@@ -356,7 +374,23 @@ is audited atomically. Configure changed offerings by creating a new definition
 and explicitly assigning selected dates; no in-place reused-menu mutation is
 exposed. New offerings copy active dishes and locked category default prices;
 old offerings and every existing order retain their recorded configuration.
-Category reclassification, custom prices and implicit repricing remain disabled.
+Custom prices and implicit repricing remain disabled.
+
+Both routine roles may rename visitors and meal dishes, or change a meal dish's
+vegetable/non-vegetable category. Changes and unused-record deletions are audited
+atomically. Existing order and offering snapshots remain unchanged. A visitor
+referenced by an order cannot be deleted. A dish referenced by a saved menu is
+deactivated instead of physically deleted and no longer appears in the active
+catalog; existing menu offerings remain available. Default Extra Rice is not
+editable through these meal-dish operations.
+
+The daily-menu client requests `include_default_rice` when creating a new menu.
+Within that transaction, the server serializes default-rice provisioning, reuses
+the lowest-ID active `extra_rice` dish whose trimmed name matches `Extra Rice`
+case-insensitively, or creates and audits that exact dish if none exists. Other
+legacy entries are left intact; explicit rice selections are rejected in this
+mode. The saved offering snapshots the locked category price. This flag preserves
+the existing menu API behavior for other callers; no existing menu is rewritten.
 
 CSV upload is a **raw `text/csv` request body**, not multipart; no filename or
 new upload dependency is needed. The adapter reads at most 8 MiB into memory,
