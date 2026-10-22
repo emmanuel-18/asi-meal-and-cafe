@@ -1,0 +1,16 @@
+{
+	default_sni {$LAN_HOST}
+}
+
+{$LAN_HOST}:443 {
+	tls internal
+
+	@api path /auth/* /api/*
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

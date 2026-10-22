@@ -76,25 +76,35 @@ See [AGENTS.md](AGENTS.md) for the repository's engineering instructions.
 ## Run locally with Docker Compose
 
 Install Docker with Compose, then copy `infra/.env.example` to `infra/.env`
-and set a PostgreSQL user, password, and database name. Keep this file private.
+and set a PostgreSQL user, password, database name, and the Docker host's
+current LAN IPv4 address as `LAN_HOST`. Keep this file private.
 From the repository root, run:
 
 ```powershell
 docker compose --env-file infra/.env -f infra/compose.yaml up --build -d
 ```
 
-The frontend is available at http://127.0.0.1:43871 and the API health endpoint
-at http://127.0.0.1:43872/health. PostgreSQL is accessible only to containers on
-the Compose network; its data persists in a named Docker volume. The current API
-does not yet connect to the database. To stop the services without removing the
-database volume, run:
+The frontend is available at `https://<host-LAN-IP>:43873`. Caddy uses a local,
+free certificate authority; copy `infra/secrets/asi-meal-root-ca.crt` to each
+client and trust it there before signing in. Find the host's IPv4 address with
+`ipconfig` on Windows or `ip addr` on Linux. If another machine cannot connect,
+allow inbound TCP port 43873 through the host firewall for the trusted private
+network. The API and PostgreSQL are not published on host ports. Database data
+persists in a named Docker volume.
+
+The LAN Compose setup enables HTTPS authentication and connects the API to its
+PostgreSQL database. The database credentials in `.env` are not application
+login credentials. Application accounts must already exist in the database;
+no default account is created.
+To stop the services without removing the database volume, run:
 
 ```powershell
 docker compose --env-file infra/.env -f infra/compose.yaml down
 ```
 
 The database credentials initialize a new volume; changing them later does not
-update an existing database. This setup is for local development, not production.
+update an existing database. This setup is for local/on-premises use, not
+production. Do not expose employee or financial data on an untrusted network.
 
 ## Development Status
 
