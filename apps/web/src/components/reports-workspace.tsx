@@ -2,20 +2,24 @@
 
 import { useEffect, useState } from "react";
 import type { RequestApi } from "@/lib/api";
-import { paymentLabels, pesos } from "@/lib/meal";
+import { centavos, paymentLabels, pesos } from "@/lib/meal";
 import { categoryLabels } from "@/lib/menus";
-import { initialFilter, loadReport, matchingEmployees, reportPath, type ReportBundle, type ReportMode } from "@/lib/reports";
+import { barWidth, initialFilter, loadReport, matchingEmployees, reportPath, periodLabel, salaryByCampaign, type ReportFilter, type ReportBundle, type ReportMode } from "@/lib/reports";
+import { downloadReport } from "@/lib/report-export";
+import ReportDownloadMenu from "./report-download-menu";
 
 export default function ReportsWorkspace({ request }: { request: RequestApi }) {
   const [filter, setFilter] = useState(initialFilter);
-  const [applied, setApplied] = useState(filter);
+  const [applied, setApplied] = useState<ReportFilter | null>(filter);
   const [revision, setRevision] = useState(0);
   const [bundle, setBundle] = useState<ReportBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
+    if (!applied) return;
     const controller = new AbortController();
     void loadReport(request, applied, controller.signal).then(result => { if (!controller.signal.aborted) setBundle(result); }).catch(error => {
       if (!controller.signal.aborted) { setBundle(null); setError(error instanceof Error ? error.message : "Unable to load reports."); }
@@ -23,32 +27,60 @@ export default function ReportsWorkspace({ request }: { request: RequestApi }) {
     return () => controller.abort();
   }, [request, applied, revision]);
 
-  function apply(event: React.FormEvent) {
-    event.preventDefault();
-    try { reportPath(filter); } catch (error) { setError(error instanceof Error ? error.message : "Choose a valid period."); return; }
-    setError(""); setBundle(null); setLoading(true); setApplied({ ...filter }); setQuery("");
+  function updateFilter(next: ReportFilter) {
+    setFilter(next); setBundle(null); setQuery("");
+    try { reportPath(next); } catch (error) {
+      setApplied(null); setLoading(false);
+      setError(error instanceof Error ? error.message : "Choose a valid period."); return;
+    }
+    setError(""); setLoading(true); setApplied(next);
   }
   function refresh() { setError(""); setBundle(null); setLoading(true); setRevision(value => value + 1); }
+  async function exportReport(format: "excel" | "pdf") {
+    if (!bundle || !applied || loading || exporting) return;
+    setExporting(true); setError("");
+    try { const pdf = await downloadReport(bundle, applied.mode, format); if (pdf) pdf.document.save(pdf.filename); }
+    catch { setError("Unable to download the report. Please try again."); }
+    finally { setExporting(false); }
+  }
   const employees = bundle ? matchingEmployees(bundle, query) : [];
+  const grouped = bundle ? salaryByCampaign(bundle.salary_deduction.orders) : null;
+  const campaigns = bundle && grouped && grouped.reduce((sum, row) => sum + row.amount, BigInt(0)) === centavos(bundle.salary_deduction.total, false) ? grouped : null;
+  const paymentValues = bundle?.payments.totals.map(row => ({ ...row, value: centavos(row.amount, false) })) ?? [];
+  const paymentMaximum = paymentValues.reduce((max, row) => row.value !== null && row.value > max ? row.value : max, BigInt(0));
 
   return <><div className="section-heading"><div><h2>Reports</h2><p className="muted">Recognized sales, payment allocations, and Salary Deduction.</p></div></div>
-    <section className="panel"><h3>Reporting period</h3>
-      <form className="filter-row" onSubmit={apply}>
-        <label>Period<select value={filter.mode} onChange={event => setFilter({ ...filter, mode: event.target.value as ReportMode })}>
+    <section className="panel report-filters"><h3>Reporting period</h3>
+      <form className="filter-row" onSubmit={event => { event.preventDefault(); if (applied) refresh(); }}>
+        <label>Period<select value={filter.mode} onChange={event => updateFilter({ ...filter, mode: event.target.value as ReportMode })}>
           <option value="daily">Daily</option><option value="weekly">Weekly (Monday–Sunday)</option><option value="monthly">Monthly</option><option value="custom">Custom range</option></select></label>
-        {(filter.mode === "daily" || filter.mode === "weekly") && <label>{filter.mode === "weekly" ? "Date in week" : "Date"}<input type="date" required value={filter.day} onChange={event => setFilter({ ...filter, day: event.target.value })} /></label>}
-        {filter.mode === "monthly" && <label>Month<input type="month" required value={filter.month} onChange={event => setFilter({ ...filter, month: event.target.value })} /></label>}
-        {filter.mode === "custom" && <><label>Start date<input type="date" required value={filter.start} onChange={event => setFilter({ ...filter, start: event.target.value })} /></label>
-          <label>End date<input type="date" required value={filter.end} onChange={event => setFilter({ ...filter, end: event.target.value })} /></label></>}
-        <button type="submit" disabled={loading}>View report</button><button type="button" className="secondary" onClick={refresh} disabled={loading}>Refresh current report</button>
+        {(filter.mode === "daily" || filter.mode === "weekly") && <label>{filter.mode === "weekly" ? "Date in week" : "Date"}<input type="date" required value={filter.day} onChange={event => updateFilter({ ...filter, day: event.target.value })} /></label>}
+        {filter.mode === "monthly" && <label>Month<input type="month" required value={filter.month} onChange={event => updateFilter({ ...filter, month: event.target.value })} /></label>}
+        {filter.mode === "custom" && <><label>Start date<input type="date" required value={filter.start} onChange={event => updateFilter({ ...filter, start: event.target.value })} /></label>
+          <label>End date<input type="date" required value={filter.end} onChange={event => updateFilter({ ...filter, end: event.target.value })} /></label></>}
+        <button type="submit" className="secondary" disabled={loading || !applied}>Refresh report</button>
+        <ReportDownloadMenu disabled={!bundle || loading || exporting} onDownload={format => void exportReport(format)} />
       </form>
-      <p className="muted">Dates are inclusive and use the Philippine operational calendar. Only currently Received orders are included. Refresh to see corrections.</p>
       {error && <p className="error" role="alert">{error}</p>}{loading && <p role="status">Loading report…</p>}
-      {bundle && <p className="report-period" role="status"><strong>Showing {bundle.sales.period.start} through {bundle.sales.period.end}</strong> (inclusive)</p>}
+      {bundle && applied && <p className="report-period" role="status"><strong>{periodLabel(applied.mode, bundle.sales.period)}</strong><br /><span className="muted">{bundle.sales.period.start} through {bundle.sales.period.end} · Inclusive · Philippine time</span></p>}
     </section>
     {bundle && !loading && <>
+      <section className="report-kpis" aria-label="Report overview">
+        <div><span>Recognized sales</span><strong>{pesos(bundle.sales.recognized_sales)}</strong></div>
+        <div><span>Received orders</span><strong>{bundle.sales.received_order_count}</strong></div>
+        <div><span>Salary Deduction</span><strong>{pesos(bundle.salary_deduction.total)}</strong></div>
+        <div><span>Total allocated</span><strong>{pesos(bundle.payments.total)}</strong></div>
+      </section>
+      <div className="report-charts">
+        <section className="panel report-chart" aria-labelledby="payment-chart-title"><h3 id="payment-chart-title">Payment allocations</h3>
+          {paymentValues.some(row => row.value === null) ? <p role="alert">Payment breakdown is unavailable.</p> : paymentValues.length === 0 ? <p role="status">No payment allocations in this period.</p> : <ul>{paymentValues.map(row => <li key={row.category} className={row.value === BigInt(0) ? "report-zero" : undefined}><span>{paymentLabels[row.category]}</span><strong>{pesos(row.amount)}</strong><div className="report-bar" aria-hidden="true"><span style={{ width: barWidth(row.value ?? BigInt(0), paymentMaximum) }} /></div></li>)}</ul>}
+        </section>
+        <section className="panel report-chart" aria-labelledby="campaign-chart-title"><h3 id="campaign-chart-title">Salary Deduction by recorded campaign</h3><p className="muted">Total: {pesos(bundle.salary_deduction.total)}</p>
+          {campaigns === null ? <p role="alert">Campaign breakdown is unavailable.</p> : campaigns.length === 0 ? <p role="status">No Salary Deduction allocations in this period.</p> : <ul>{campaigns.map(row => <li key={row.name}><span>{row.name}</span><strong>{pesos(row.amount)}</strong><div className="report-bar" aria-hidden="true"><span style={{ width: barWidth(row.amount, campaigns[0].amount) }} /></div></li>)}</ul>}
+        </section>
+      </div>
       <section className="panel"><h3>Sales summary</h3>
-        <div className="allocation-summary sales-summary"><span>Recognized sales <strong>{pesos(bundle.sales.recognized_sales)}</strong></span><span>Received orders <strong>{bundle.sales.received_order_count}</strong></span><span>Meals <strong>{bundle.sales.meal_quantity}</strong></span><span>Items <strong>{bundle.sales.item_quantity}</strong></span></div>
+        <div className="allocation-summary sales-summary"><span>Meals <strong>{bundle.sales.meal_quantity}</strong></span><span>Items <strong>{bundle.sales.item_quantity}</strong></span></div>
         {bundle.sales.received_order_count === 0 && <p className="muted" role="status">No Received orders in this period.</p>}
         <div className="table-scroll" role="region" aria-label="Sales by recorded category" tabIndex={0}><table><caption>Sales by recorded category</caption><thead><tr><th scope="col">Category</th><th scope="col" className="numeric">Quantity</th><th scope="col" className="numeric">Sales</th></tr></thead>
           <tbody>{bundle.sales.categories.map(row => <tr key={row.category}><th scope="row">{categoryLabels[row.category]}</th><td className="numeric">{row.quantity}</td><td className="numeric">{pesos(row.amount)}</td></tr>)}</tbody></table></div>

@@ -77,23 +77,23 @@ export default function OrderEntry({ request, onSaved, onConfigureMenu, menuRevi
     setQuantities(current => ({ ...current, [id]: Math.max(0, Math.min(2147483647, Math.trunc(value) || 0)) }));
   }
 
-  return <div className="order-workspace">
+  return <div className="order-workspace order-entry-workspace">
     {error && <p className="error" role="alert">{error}</p>}
     {retry && !saving && <p className="notice" role="status">The result could not be confirmed. Retry the same order below; its request key prevents duplicate processing. Check the order list before starting another order.</p>}
     <div className="order-layout"><div className="order-main"><fieldset disabled={saving || !!retry} className="entry-fields"><legend className="sr-only">New order details</legend>
-      <section className="panel service-panel"><h3><span className="step-number">1</span> Service date</h3><form onSubmit={loadMenu} className="inline-form">
+      <section className="panel service-panel order-entry-section"><h3><span className="step-number">1</span> Service date</h3><form onSubmit={loadMenu} className="inline-form">
         <label>Menu service date<input type="date" required value={day} onChange={e => {
           if (selectedRef.current && !window.confirm("Changing date clears selected menu items. Continue?")) return;
           controller.current?.abort(); setLoading(true); setDay(e.target.value); setMenu(null); setQuantities({}); setError("");
         }} /></label><button type="submit" disabled={loading}>{loading ? "Loading menu…" : "Refresh menu"}</button>
       </form>{menu && <p className="muted">{menu.label || "Saved menu"} · {menu.service_date}</p>}
         {!loading && !menu && <button type="button" className="secondary" onClick={() => onConfigureMenu(day)}>Set up menu for this date</button>}</section>
-      <section className="panel customer-panel"><h3><span className="step-number">2</span> Customer</h3><fieldset className="choice-row"><legend>Customer type</legend>
+      <section className="panel customer-panel order-entry-section"><h3><span className="step-number">2</span> Customer</h3><fieldset className="choice-row"><legend>Customer type</legend>
         {(["employee", "visitor"] as const).map(value => <label key={value}><input type="radio" name="customer-kind" checked={kind === value}
           onChange={() => { setKind(value); setCustomer(null); setSplit(false); setAmounts({}); }} />{value === "employee" ? "Employee" : "Visitor"}</label>)}
       </fieldset>
       <CustomerPicker key={kind} kind={kind} request={request} selected={customer} onSelect={setCustomer} /></section>
-      <section className="panel items-panel"><h3><span className="step-number">3</span> Menu items</h3>{!menu ? <p className="muted">Load an assigned menu to select items.</p> : !menu.items.length ?
+      <section className="panel items-panel order-entry-section"><h3><span className="step-number">3</span> Menu items</h3>{!menu ? <p className="muted">Load an assigned menu to select items.</p> : !menu.items.length ?
         <p className="muted">This menu has no offerings. Ask staff to configure it.</p> : <div className="table-scroll" role="region" aria-label="Menu offerings and quantities" tabIndex={0}><table><caption className="sr-only">Menu offerings and quantities</caption>
           <thead><tr><th scope="col">Dish</th><th scope="col" className="numeric">Unit price</th><th scope="col">Quantity</th><th scope="col" className="numeric">Line total</th></tr></thead>
           <tbody>{menu.items.map(item => <tr key={item.id} className={quantities[item.id] ? "item-selected" : undefined}><th scope="row">{item.item_name}<small>{item.category_code.replaceAll("_", " ")}{quantities[item.id] ? " · Selected" : ""}</small></th><td className="numeric">{pesos(item.unit_price)}</td>
@@ -104,7 +104,7 @@ export default function OrderEntry({ request, onSaved, onConfigureMenu, menuRevi
             <td className="numeric">{pesos(itemTotal({ ...menu, items: [item] }, quantities))}</td></tr>)}</tbody></table></div>}
         <p className="total">Order total <strong>{pesos(total)}</strong></p></section>
     </fieldset></div><div className="order-side"><fieldset disabled={saving || !!retry} className="entry-fields"><legend className="sr-only">Payment details</legend>
-      <section className="panel payment-panel"><h3><span className="step-number">4</span> Payment allocation</h3>
+      <section className="panel payment-panel order-entry-section"><h3><span className="step-number">4</span> Payment allocation</h3>
         <p className="order-checkout-total">Order total <strong>{pesos(total)}</strong></p>
         {kind === "visitor" ? <p>Visitor orders use <strong>Finance</strong>: {pesos(total)}</p> : <>
           <label className="check-label payment-choice"><input type="checkbox" checked={split} onChange={e => setSplit(e.target.checked)} />Split payment</label>

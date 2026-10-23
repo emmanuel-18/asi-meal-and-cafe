@@ -219,9 +219,9 @@ class AuthService:
                 raise ProvisioningRejected("New password must differ from the current password")
             user.password_hash = encoded
             user.password_change_required = False
-            user.updated_at = now
+            user.updated_at = max(now, user.updated_at + timedelta(microseconds=1))
             session.execute(update(m.AuthSession).where(m.AuthSession.user_id == user.id,
-                m.AuthSession.id != auth.id, m.AuthSession.revoked_at.is_(None)).values(revoked_at=now))
+                m.AuthSession.id != auth.id, m.AuthSession.revoked_at.is_(None)).values(revoked_at=func.greatest(now, m.AuthSession.created_at)))
             self._audit(session, user.id, "password_changed", {"password_change_required": False})
             return SessionResult(self._identity(user), token, encode_token(auth.csrf_token), auth.expires_at)
 

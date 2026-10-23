@@ -39,6 +39,7 @@ test("order payload preserves text identifiers and includes only approved inputs
 
 test("reversal controls require Admin, current Received, acknowledgement and Other explanation", () => {
   assert.equal(canReverse("admin", true), true);
+  assert.equal(canReverse("super_admin", true), true);
   assert.equal(canReverse("assistant_admin", true), false);
   assert.equal(canReverse("admin", false), false);
   assert.equal(canConfirm("other", "   ", true), false);

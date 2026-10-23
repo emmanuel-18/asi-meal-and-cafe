@@ -27,6 +27,7 @@ API_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_HTTP_ROUTES = {
     "/health": {"get"}, "/auth/login": {"post"}, "/auth/logout": {"post"}, "/auth/me": {"get"},
     "/auth/change-password": {"post"}, "/api/users": {"get", "post"}, "/api/users/{user_id}": {"patch"},
+    "/api/activity": {"get"}, "/api/activity/{event_id}": {"get"},
     "/api/employees": {"get"}, "/api/employees/import": {"post"},
     "/api/visitors": {"get", "post"}, "/api/dishes": {"get", "post"},
     "/api/visitors/{visitor_id}": {"patch", "delete"}, "/api/dishes/{dish_id}": {"patch", "delete"},

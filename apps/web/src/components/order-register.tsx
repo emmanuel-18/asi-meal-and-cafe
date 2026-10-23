@@ -29,6 +29,13 @@ export default function OrderRegister({ request, session, savedId }: { request: 
   const detailRequest = useRef<AbortController | null>(null);
   const mutation = useRef(false);
   const listingRevision = useRef<string | null>(null);
+  const drawer = useRef<HTMLDialogElement>(null);
+  const detailTrigger = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const element = drawer.current;
+    if (detail && element && !element.open) element.showModal();
+  }, [detail]);
 
   const load = useCallback((signal?: AbortSignal, pageOffset = offset) => {
     if (pageOffset === 0) listingRevision.current = null;
@@ -75,6 +82,21 @@ export default function OrderRegister({ request, session, savedId }: { request: 
     finally { if (!controller.signal.aborted) setDetailLoading(false); }
   }
 
+  function toggleDetail(id: number) {
+    if (detail?.order_id === id) {
+      detailRequest.current?.abort();
+      setDetail(null); setReversing(false); setAcknowledged(false);
+    } else { detailTrigger.current = document.activeElement as HTMLElement | null; void open(id); }
+  }
+
+  function closeDetail() {
+    if (busy || editing || reversing) return;
+    detailRequest.current?.abort();
+    drawer.current?.close();
+    setDetail(null);
+    if (detailTrigger.current?.isConnected) detailTrigger.current.focus();
+  }
+
   async function transition(reverse: boolean) {
     if (!detail || mutation.current) return;
     mutation.current = true; setBusy(true); setError(""); setNotice("");
@@ -113,29 +135,39 @@ export default function OrderRegister({ request, session, savedId }: { request: 
   const total = detail?.items.reduce((sum, item) => sum + (centavos(item.line_total) ?? BigInt(0)), BigInt(0)) ?? BigInt(0);
   const allocated = detail?.allocations.reduce((sum, a) => sum + (centavos(a.amount) ?? BigInt(0)), BigInt(0)) ?? BigInt(0);
 
-  return <>
+  return <div className="orders-register-workspace">
     {error && <p className="error" role="alert">{error}</p>}{notice && <p className="notice" role="status">{notice}</p>}
-    <section className="order-overview" aria-label="Selected service date overview">{!day ? <p>Select a service date for totals.</p> : overviewError ? <p role="alert" className="error">Date totals: {overviewError}</p> : !overview ? <p role="status">Loading date totals...</p> : <><div><span>Pending</span><strong>{overview.pending}</strong></div><div><span>Received</span><strong>{overview.received}</strong></div><div><span>Total orders</span><strong>{overview.total}</strong></div><div><span>Recognized sales</span><strong>{pesos(overview.recognized_sales)}</strong></div></>}</section>
-    <section className="panel"><div className="filter-row"><label>Service date<input type="date" value={day} onChange={e => { listingRevision.current = null; setLoading(true); setDay(e.target.value); setOffset(0); setError(""); }} disabled={busy || editing} /></label>
+    <section className="order-overview" aria-label="Selected service date overview"><div className="order-overview-label"><span>Selected date</span><strong>{day || "—"}</strong></div>{!day ? <p>Select a service date for totals.</p> : overviewError ? <p role="alert" className="error">Date totals: {overviewError}</p> : !overview ? <p role="status">Loading date totals...</p> : <><div className="order-metric order-metric--pending"><span>Pending</span><strong>{overview.pending}</strong></div><div className="order-metric order-metric--received"><span>Received</span><strong>{overview.received}</strong></div><div className="order-metric"><span>Total orders</span><strong>{overview.total}</strong></div><div className="order-metric order-metric--sales"><span>Recognized sales</span><strong>{pesos(overview.recognized_sales)}</strong></div></>}</section>
+    <section className="orders-register-panel" aria-label="Order register"><div className="orders-register-heading"><div><h3>Order register</h3><p>Review the saved order record and handover status.</p></div></div>
+      <div className="filter-row orders-filter-row"><label>Service date<input type="date" value={day} onChange={e => { listingRevision.current = null; setLoading(true); setDay(e.target.value); setOffset(0); setError(""); }} disabled={busy || editing} /></label>
       <label>Status<select value={status} onChange={e => { listingRevision.current = null; setLoading(true); setStatus(e.target.value); setOffset(0); setError(""); }} disabled={busy || editing}>
         <option value="">All statuses</option><option value="pending">Pending</option><option value="received">Received</option></select></label>
       <button type="button" className="secondary" disabled={loading || busy || editing} onClick={() => { setLoading(true); setError(""); setOffset(0); void load(undefined, 0).catch(e => setError(e.message)); void loadOverview(); }}>Refresh orders</button></div>
       {loading ? <p role="status">Loading orders…</p> : !orders.length ? <p role="status" className="muted">No orders match these filters.</p> : <>
         <div className="table-scroll" role="region" aria-label="Orders matching selected filters" tabIndex={0}><table><caption className="sr-only">Orders matching selected filters</caption><thead><tr>
           <th scope="col">Order</th><th scope="col">Service date</th><th scope="col">Customer</th><th scope="col">Status</th><th scope="col" className="numeric">Total</th><th scope="col">Action</th>
-        </tr></thead><tbody>{orders.map(order => <tr key={order.order_id} className={`order-row${detail?.order_id === order.order_id ? " selected" : ""}`} tabIndex={busy || editing ? -1 : 0} aria-label={`Open order ${order.order_id}`} onClick={() => { if (!busy && !editing) void open(order.order_id); }} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); if (!busy && !editing) void open(order.order_id); } }}><td>#{order.order_id}</td><td>{order.service_date}</td>
+        </tr></thead><tbody>{orders.map(order => <tr key={order.order_id} className={`order-row${detail?.order_id === order.order_id ? " selected" : ""}`} tabIndex={busy || editing ? -1 : 0} aria-label={`${detail?.order_id === order.order_id ? "Close" : "Open"} order ${order.order_id}`} onClick={() => { if (!busy && !editing) toggleDetail(order.order_id); }} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); if (!busy && !editing) toggleDetail(order.order_id); } }}><td><span className="order-id">#{order.order_id}</span></td><td>{order.service_date}</td>
           <td>{order.customer_name}<small>{order.employee_number ?? `Visitor #${order.visitor_id}`}</small></td>
           <td><span className={`badge ${order.is_received ? "received" : "pending"}`}>{order.is_received ? "Received" : "Pending"}</span></td><td className="numeric">{pesos(order.total)}</td>
           <td>{!order.is_received && <button type="button" disabled={busy || editing} onClick={event => { event.stopPropagation(); void quickReceive(order); }} aria-label={`Mark order ${order.order_id} Received`}>Mark Received</button>}</td></tr>)}</tbody></table></div>
+        <div className="orders-mobile-list" aria-label="Orders matching selected filters">{orders.map(order => <article key={order.order_id} className={`order-mobile-card${detail?.order_id === order.order_id ? " selected" : ""}`}>
+          <button type="button" className="order-mobile-open" disabled={busy || editing} onClick={() => toggleDetail(order.order_id)} aria-label={`${detail?.order_id === order.order_id ? "Close" : "Open"} order ${order.order_id}`} aria-expanded={detail?.order_id === order.order_id}>
+            <span className="order-mobile-top"><span className="order-id">Order #{order.order_id}</span><span className={`badge ${order.is_received ? "received" : "pending"}`}>{order.is_received ? "Received" : "Pending"}</span></span>
+            <strong className="order-mobile-customer">{order.customer_name}</strong>
+            <span className="order-mobile-identity">{order.employee_number ?? `Visitor #${order.visitor_id}`}</span>
+            <span className="order-mobile-bottom"><span>{order.service_date}</span><strong>{pesos(order.total)}</strong></span>
+          </button>
+          {!order.is_received && <div className="order-mobile-actions"><button type="button" disabled={busy || editing} onClick={() => void quickReceive(order)} aria-label={`Mark order ${order.order_id} Received`}>Mark Received</button></div>}
+        </article>)}</div>
       </>}
       <div className="pagination"><button type="button" className="secondary" disabled={listingInvalid || offset === 0 || loading || busy || editing} onClick={() => { setLoading(true); setOffset(Math.max(0, offset - 20)); }}>Previous</button>
         <span>Page {offset / 20 + 1}</span><button type="button" className="secondary" disabled={orders.length < 20 || offset >= 10000 || loading || busy || editing} onClick={() => { setLoading(true); setOffset(offset + 20); }}>Next</button></div>
     </section>
-    {detailLoading && <p role="status">Loading order details…</p>}
-    {detail && <section className="panel" aria-labelledby="order-detail-heading"><div className="section-heading"><h3 id="order-detail-heading">Order #{detail.order_id}</h3>
-      <button type="button" className="secondary" disabled={busy || editing} onClick={() => { detailRequest.current?.abort(); setDetail(null); }}>Close details</button></div>
-      <p><strong>{detail.customer_name}</strong> · {detail.employee_number ?? `Visitor #${detail.visitor_id}`} · {detail.service_date}</p>
-      <p><span className={`badge ${detail.is_received ? "received" : "pending"}`}>{detail.is_received ? "Received" : "Pending"}</span> <span className="muted">Version {detail.version}</span></p>
+    {detailLoading && <p className="order-detail-loading" role="status">Loading order details…</p>}
+    {detail && <dialog ref={drawer} className="order-detail-drawer" aria-labelledby="order-detail-heading" onCancel={event => { event.preventDefault(); closeDetail(); }} onClick={event => { if (event.target === event.currentTarget) closeDetail(); }}><section className="panel order-detail-panel"><div className="section-heading"><div><span className="orders-eyebrow"><span aria-hidden="true" /> ORDER SNAPSHOT</span><h3 id="order-detail-heading">Order #{detail.order_id}</h3></div>
+      <button type="button" className="secondary" disabled={busy || editing || reversing} onClick={closeDetail} autoFocus>Close details</button></div>
+      <div className="order-detail-meta"><p><strong>{detail.customer_name}</strong><span>{detail.employee_number ?? `Visitor #${detail.visitor_id}`}</span></p>
+        <p><span>{detail.service_date}</span><span className={`badge ${detail.is_received ? "received" : "pending"}`}>{detail.is_received ? "Received" : "Pending"}</span><span className="muted">Version {detail.version}</span></p></div>
       <div className="table-scroll" role="region" aria-label="Saved order items" tabIndex={0}><table><caption className="sr-only">Saved order items</caption><thead><tr><th scope="col">Item</th><th scope="col" className="numeric">Unit price</th><th scope="col" className="numeric">Quantity</th><th scope="col" className="numeric">Line total</th></tr></thead>
         <tbody>{detail.items.map(item => <tr key={item.id}><th scope="row">{item.name}<small>{item.category.replaceAll("_", " ")}</small></th><td className="numeric">{pesos(item.unit_price)}</td><td className="numeric">{item.quantity}</td><td className="numeric">{pesos(item.line_total)}</td></tr>)}</tbody></table></div>
       <p className="total">Saved order total <strong>{pesos(total)}</strong></p><h4>Recorded allocations</h4>
@@ -153,7 +185,7 @@ export default function OrderRegister({ request, session, savedId }: { request: 
           onClick={() => { setEditing(true); setError(""); setNotice(""); }}>Edit Pending order</button>}
         <button type="button" disabled={busy || !detail.allocations.length || total !== allocated} onClick={() => void transition(false)}>{busy ? "Saving…" : "Mark Received"}</button></div></div>}
       {canReverse(session.user.role, detail.is_received) && <>
-        {!reversing ? <button type="button" className="secondary" disabled={busy} onClick={() => { setReversing(true); setAcknowledged(false); }}>Reverse to Pending</button> : <form className="correction" onSubmit={e => { e.preventDefault(); void transition(true); }}>
+        {!reversing ? <div className="order-critical-action"><span>Corrective action</span><button type="button" className="secondary" disabled={busy} onClick={() => { setReversing(true); setAcknowledged(false); }}>Reverse to Pending</button></div> : <form className="correction order-correction" onSubmit={e => { e.preventDefault(); void transition(true); }}>
           <h4>Received correction</h4><p>This removes the order from current recognized sales and payment-category totals.</p>
           <label>Correction reason<select value={reason} disabled={busy} onChange={e => { setReason(e.target.value as Reason); setAcknowledged(false); }}>
             {reasons.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
@@ -164,6 +196,6 @@ export default function OrderRegister({ request, session, savedId }: { request: 
             <button type="button" className="secondary" disabled={busy} onClick={() => setReversing(false)}>Cancel</button></div>
         </form>}
       </>}
-    </section>}
-  </>;
+    </section></dialog>}
+  </div>;
 }

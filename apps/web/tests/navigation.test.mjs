@@ -66,3 +66,16 @@ test("drawer opens modally, closes to its trigger, and selection focuses the des
     assert.equal(ui.headingFocused, 1); assert.equal(document.body.style.overflow, "scroll");
   } finally { ui.restore(); }
 });
+
+test("Users is visible only to Super Admin", () => {
+  for (const role of ["super_admin", "admin", "assistant_admin"]) {
+    const ui = render(role);
+    try {
+      const users = ui.nodes.filter(n => n.type === "button" && n.props.children?.[1]?.props?.children === "Users");
+      assert.equal(users.length, role === "super_admin" ? 2 : 0);
+      const activity = ui.nodes.filter(n => n.type === "button" && n.props.children?.[1]?.props?.children === "Activity Logs");
+      assert.equal(activity.length, role === "super_admin" ? 2 : 0);
+      if (role === "super_admin") assert.ok(ui.nodes.some(n => n.type === "small" && n.props.children === "Super Admin"));
+    } finally { ui.restore(); }
+  }
+});

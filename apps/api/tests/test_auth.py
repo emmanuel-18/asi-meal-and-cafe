@@ -286,6 +286,7 @@ def test_verified_actor_dependencies_and_stored_role_enforcement(auth_env):
             sql(connection, "UPDATE users SET role_code='super_admin' WHERE id=:id", id=g["actor"])
         super_admin = service.current(c.cookies.get(runtime.settings.cookie)).user
         assert super_admin.role == "super_admin" and c.get("/probe/admin").status_code == 200
+        assert EmployeeImportService(service._sessions).import_csv(super_admin.actor, csv_bytes([person()])).status == "completed"
         reversed_order = orders.reverse_received(super_admin.actor, order.order_id, marked.version, Correction("mistaken_click", True))
         assert not reversed_order.is_received
         assert ReportingService(service._sessions).sales_summary(super_admin.actor, DateRange.daily(g["day"])).recognized_sales == 0
@@ -484,3 +485,131 @@ def test_user_management_and_required_password_change(auth_env):
         with engine.connect() as c:
             audits = repr(sql(c, "SELECT before_values,after_values FROM audit_events").all())
             assert temporary not in audits and replacement not in audits
+
+
+def test_promote_admin1_cli_is_explicit_audited_and_idempotent(auth_env, monkeypatch, capsys):
+    from asi_meal_api import auth_cli
+    engine, g, _, service, password, _, _ = auth_env
+    with engine.begin() as c:
+        sql(c, "UPDATE users SET login_name='admin1' WHERE id=:id", id=g['actor'])
+    existing = service.login('admin1', password)
+    monkeypatch.setenv('ASI_DATABASE_URL', 'postgresql+psycopg://synthetic')
+    monkeypatch.setattr(auth_cli, 'create_engine', lambda *args, **kwargs: engine)
+    monkeypatch.setattr(engine, 'dispose', lambda: None)
+    monkeypatch.setattr(auth_cli.sys.stdin, 'isatty', lambda: True)
+    def run_cli():
+        entries = iter(['Synthetic operator', 'Synthetic reason', 'PROMOTE admin1'])
+        monkeypatch.setattr('builtins.input', lambda prompt: next(entries))
+        return auth_cli.main(['promote-admin1'])
+    assert run_cli() == 0
+    with pytest.raises(AuthenticationFailed):
+        service.current(existing.token)
+    assert service.login('admin1', password).user.role == 'super_admin'
+    assert run_cli() == 0
+    with engine.connect() as c:
+        rows = sql(c, "SELECT before_values,after_values,reason FROM audit_events WHERE action='super_admin_promoted'").mappings().all()
+        assert len(rows) == 1
+        assert rows[0]['before_values']['role'] == 'admin'
+        assert rows[0]['after_values']['role'] == 'super_admin'
+        assert rows[0]['after_values']['attribution'] == 'local_self_attested'
+        assert rows[0]['reason'] == 'Synthetic reason'
+    assert password not in capsys.readouterr().out
+
+
+def test_account_management_role_and_session_revocation(auth_env):
+    engine, g, _, _, password, _, runtime = auth_env
+    with engine.begin() as c:
+        sql(c, "UPDATE users SET role_code='super_admin' WHERE id=:id", id=g['actor'])
+    origin = {'Origin': 'https://testserver'}
+    temporary = secrets.token_urlsafe(24)
+    reset = secrets.token_urlsafe(24)
+    with client(runtime) as admin, client(runtime) as managed:
+        auth = login_http(admin, password).json()
+        headers = {**origin, 'X-CSRF-Token': auth['csrf_token']}
+        self_row = next(u for u in admin.get('/api/users').json() if u['id'] == g['actor'])
+        assert admin.patch(f"/api/users/{g['actor']}", headers=headers, json={'expected_updated_at':self_row['updated_at'], 'is_enabled':False}).status_code == 403
+        assert admin.post('/api/users', headers=headers, json={'login_name':'nope', 'display_name':'Synthetic', 'role':'super_admin', 'temporary_password':temporary}).status_code == 422
+        account = admin.post('/api/users', headers=headers, json={'login_name':'Synthetic.Admin', 'display_name':'Synthetic', 'role':'admin', 'temporary_password':temporary}).json()
+        signed = login_http(managed, temporary, name='Synthetic.Admin').json()
+        managed_headers = {**origin, 'X-CSRF-Token':signed['csrf_token']}
+        assert managed.get('/api/users').status_code == 403
+        assert managed.post('/auth/change-password', headers=managed_headers, json={'current_password':temporary, 'new_password':reset}).status_code == 200
+        assert managed.get('/api/users').status_code == 403
+        account = next(u for u in admin.get('/api/users').json() if u['id'] == account['id'])
+        changed = admin.patch(f"/api/users/{account['id']}", headers=headers, json={'expected_updated_at':account['updated_at'], 'role':'assistant_admin'})
+        assert changed.status_code == 200
+        assert managed.get('/auth/me').status_code == 401
+        account = changed.json()
+        updated = admin.patch(f"/api/users/{account['id']}", headers=headers, json={'expected_updated_at':account['updated_at'], 'temporary_password':temporary})
+        assert updated.status_code == 200 and updated.json()['password_change_required']
+        signed = login_http(managed, temporary, name='Synthetic.Admin').json()
+        assert signed['user']['password_change_required']
+        assert managed.get('/api/reports/bundle?mode=daily&day=2026-01-01').status_code == 403
+        account = updated.json()
+        disabled = admin.patch(f"/api/users/{account['id']}", headers=headers, json={'expected_updated_at':account['updated_at'], 'is_enabled':False})
+        assert disabled.status_code == 200 and managed.get('/auth/me').status_code == 401
+        assert login_http(managed, temporary, name='Synthetic.Admin').status_code == 401
+        restored = admin.patch(f"/api/users/{account['id']}", headers=headers, json={'expected_updated_at':disabled.json()['updated_at'], 'is_enabled':True})
+        assert restored.status_code == 200
+        with engine.connect() as c:
+            events = sql(c, "SELECT action,before_values,after_values FROM audit_events WHERE entity_type='users' AND entity_key=:id", id=str(account['id'])).mappings().all()
+            assert {'user_created','user_role_changed','user_password_reset','user_disabled','user_reactivated'} <= {row['action'] for row in events}
+            assert temporary not in repr(events) and reset not in repr(events)
+
+
+def test_concurrent_account_edits_reject_stale_state(auth_env):
+    from asi_meal_api.user_management import UserService
+    from asi_meal_api.orders import ActorContext, Conflict
+    engine, g, _, auth_service, _, _, _ = auth_env
+    with engine.begin() as c:
+        sql(c, "UPDATE users SET role_code='super_admin' WHERE id=:id", id=g['actor'])
+    users = UserService(auth_service.session_factory, auth_service.passwords)
+    context = ActorContext(g['actor'])
+    target = users.create(context, 'Synthetic.Concurrent', 'Synthetic', 'admin', secrets.token_urlsafe(24))
+    def change(display):
+        try:
+            users.change(context, target['id'], target['updated_at'], display, None, None)
+            return 'saved'
+        except Conflict:
+            return 'stale'
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(change, ['Synthetic One', 'Synthetic Two'])) == ['saved', 'stale']
+
+
+def test_password_change_migration_preserves_existing_accounts(postgres):
+    schema = f"migration_{uuid4().hex}"
+    with postgres.engine.begin() as connection:
+        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+    engine = create_engine(postgres.engine.url, hide_parameters=True, connect_args={"options": f"-csearch_path={schema}"})
+    try:
+        with engine.begin() as c:
+            command.upgrade(alembic_config(c), '0004_super_admin')
+            account_id = sql(c, "INSERT INTO users (login_name,display_name,password_hash,role_code) VALUES ('Synthetic.Existing','Synthetic','synthetic-hash','admin') RETURNING id").scalar_one()
+            command.upgrade(alembic_config(c), 'head')
+            row = sql(c, 'SELECT role_code,password_hash,password_change_required FROM users WHERE id=:id', id=account_id).one()
+            assert row == ('admin', 'synthetic-hash', False)
+    finally:
+        engine.dispose()
+        with postgres.engine.begin() as connection:
+            connection.exec_driver_sql(f'DROP SCHEMA "{schema}" CASCADE')
+
+
+def test_password_change_revokes_other_sessions_and_reset_revokes_current(auth_env):
+    engine, g, _, service, password, _, runtime = auth_env
+    with engine.begin() as c:
+        sql(c, "UPDATE users SET role_code='super_admin' WHERE id=:id", id=g['actor'])
+    old, new, reset = (secrets.token_urlsafe(24) for _ in range(3))
+    origin = {'Origin': 'https://testserver'}
+    with client(runtime) as admin, client(runtime) as first, client(runtime) as second:
+        admin_headers = {**origin, 'X-CSRF-Token': login_http(admin, password).json()['csrf_token']}
+        account = admin.post('/api/users', headers=admin_headers, json={'login_name':'Synthetic.Sessions', 'display_name':'Synthetic', 'role':'admin', 'temporary_password':old}).json()
+        one = login_http(first, old, name='Synthetic.Sessions').json()
+        two = login_http(second, old, name='Synthetic.Sessions').json()
+        one_headers = {**origin, 'X-CSRF-Token': one['csrf_token']}
+        assert first.post('/auth/change-password', headers=one_headers, json={'current_password':old, 'new_password':new}).status_code == 200
+        assert first.get('/auth/me').status_code == 200
+        assert second.get('/auth/me').status_code == 401
+        account = next(u for u in admin.get('/api/users').json() if u['id'] == account['id'])
+        assert admin.patch(f"/api/users/{account['id']}", headers=admin_headers, json={'expected_updated_at':account['updated_at'], 'temporary_password':reset}).status_code == 200
+        assert first.get('/auth/me').status_code == 401
+        assert login_http(second, reset, name='Synthetic.Sessions').json()['user']['password_change_required']

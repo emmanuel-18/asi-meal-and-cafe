@@ -1,8 +1,17 @@
 import type { Category, Payment, RequestApi } from "./api.ts";
+import { centavos } from "./meal.ts";
 
 export type ReportMode = "daily" | "weekly" | "monthly" | "custom";
 export type ReportFilter = { mode: ReportMode; day: string; month: string; start: string; end: string };
 export type Period = { start: string; end: string };
+
+export function periodLabel(mode: ReportMode, period: Period): string {
+  const format = (value: string) => new Intl.DateTimeFormat("en-PH", {
+    timeZone: "UTC", weekday: "short", day: "numeric", month: "short", year: "numeric",
+  }).format(new Date(`${value}T00:00:00Z`));
+  const title = { daily: "Daily", weekly: "Weekly (Monday–Sunday)", monthly: "Monthly", custom: "Custom range" }[mode];
+  return `${title}: ${format(period.start)}${period.start === period.end ? "" : ` – ${format(period.end)}`}`;
+}
 export type SDOrder = { order_id: number; service_date: string; employee_number: string; customer_name: string;
   position: string | null; campaign: string | null; line_of_business: string | null; sd_amount: string };
 export type ReportBundle = {
@@ -54,4 +63,19 @@ export function matchingEmployees(bundle: ReportBundle, query: string) {
   const term = query.trim().toLocaleLowerCase();
   return bundle.salary_deduction.employees.filter(employee => !term || employee.employee_number.toLocaleLowerCase().includes(term) ||
     bundle.salary_deduction.orders.some(order => order.employee_number === employee.employee_number && order.customer_name.toLocaleLowerCase().includes(term)));
+}
+
+export function salaryByCampaign(orders: SDOrder[]): { name: string; amount: bigint }[] | null {
+  const groups = new Map<string, bigint>();
+  for (const order of orders) {
+    const amount = centavos(order.sd_amount, false);
+    if (amount === null || amount < BigInt(0)) return null;
+    const name = order.campaign?.trim() || "Not recorded";
+    groups.set(name, (groups.get(name) ?? BigInt(0)) + amount);
+  }
+  return [...groups].map(([name, amount]) => ({ name, amount })).sort((a, b) => a.amount === b.amount ? a.name.localeCompare(b.name) : a.amount > b.amount ? -1 : 1);
+}
+
+export function barWidth(amount: bigint, maximum: bigint): string {
+  return maximum > BigInt(0) && amount > BigInt(0) ? `${Number(amount * BigInt(10000) / maximum) / 100}%` : "0%";
 }

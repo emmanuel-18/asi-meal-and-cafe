@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { Session } from "@/lib/api";
 
-export const sections = ["Orders", "Menu", "Customers", "Reports", "Users"] as const;
+export const sections = ["Orders", "Menu", "Customers", "Reports", "Users", "Activity Logs"] as const;
 export type Section = typeof sections[number];
 
 function Icon({ name }: { name: Section | "Navigation" | "Close" | "Sign out" }) {
@@ -13,6 +13,7 @@ function Icon({ name }: { name: Section | "Navigation" | "Close" | "Sign out" })
     Customers: <><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5v1"/></>,
     Reports: <><path d="M4 20h16M6 17v-5h3v5M11 17V7h3v10M16 17V4h3v13"/></>,
     Users: <><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 10h5M18.5 7.5v5"/></>,
+    "Activity Logs": <><path d="M5 3h14v18H5zM8 7h8M8 11h8M8 15h5"/></>,
     Navigation: <path d="M4 6h16M4 12h16M4 18h16"/>,
     Close: <path d="M5 5l14 14M19 5 5 19"/>,
     "Sign out": <><path d="M10 4H5v16h5M14 8l4 4-4 4M8 12h10"/></>,
@@ -57,7 +58,7 @@ export default function AppNavigation({ session, section, onSelect, onLogout, bu
 
   function content(fromDrawer: boolean) {
     return <><div className="sidebar-brand">ASI Meal Management</div>
-      <nav className="sidebar-nav" aria-label="Application">{sections.filter(name => name !== "Users" || session.user.role === "super_admin").map(name => <button type="button" key={name}
+      <nav className="sidebar-nav" aria-label="Application">{sections.filter(name => !["Users", "Activity Logs"].includes(name) || session.user.role === "super_admin").map(name => <button type="button" key={name}
         aria-current={section === name ? "page" : undefined} onClick={() => select(name, fromDrawer)}><Icon name={name}/><span>{name}</span></button>)}</nav>
       <div className="sidebar-account"><span>{session.user.display_name}<small>{session.user.role === "super_admin" ? "Super Admin" : session.user.role === "admin" ? "Admin" : "Assistant Admin"}</small></span>
         <button type="button" onClick={onLogout} disabled={busy}><Icon name="Sign out"/>Sign out</button></div></>;

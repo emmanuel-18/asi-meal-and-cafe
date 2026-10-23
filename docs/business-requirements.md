@@ -21,15 +21,15 @@ remaining permission details are identified separately.
 
 | Status | Role | Initial permissions |
 | --- | --- | --- |
-| Confirmed | Admin | Record/manage orders, menus and reusable dish catalog, and visitor records; select categories; mark/correct Received; view sales reports; manage user accounts/role assignments; view audit logs. |
-| Confirmed | Assistant Admin | Routine order, menu/catalog and visitor management; select categories; mark/correct Received; view reports. Cannot manage user accounts/role assignments or have unrestricted administrative security access. |
+| Confirmed | Super Admin | All Admin operational permissions; manage application users. Activity-log access is planned for a later stage. |
+| Confirmed | Admin | Record/manage orders, menus and reusable dishes and visitors; mark or reverse Received; view reports; import employees. No user management. |
+| Confirmed | Assistant Admin | Routine orders, menus, dishes and visitors; mark Received and view reports. Cannot reverse Received, import employees, or manage users. |
 
-- **Confirmed:** Both roles use individual accounts, never shared accounts.
+- **Confirmed:** All roles use individual accounts, never shared accounts.
   Keep permissions understandable without unnecessary routine-work restrictions.
 - **Proposed:** Keep role permissions clearly defined or configurable within
   the confirmed initial model.
-- **Unresolved:** Site/record access, employee-import permissions, Assistant Admin
-  audit-view access, and specific administrative security permissions.
+- **Unresolved:** Site/record access and further administrative security permissions.
 
 ## 3. Scope and exclusions
 
@@ -133,7 +133,7 @@ Synthetic example: 2 vegetable meals + 1 non-vegetable meal + 3 extra rice =
   staff confirmation, not GCash verification, payroll/SD verification, or Finance
   approval of external payment processing. Do not wait for Finance or payroll
   before counting SD sales.
-- **Confirmed:** Both Admin and Assistant Admin may correct Received. Every
+- **Confirmed:** Only Admin and Super Admin may reverse Received. Every
   correction retains responsible user, timestamp, affected order, action, and
   previous/new values; do not erase the original action.
 - **Proposed:** Require a correction reason where appropriate; mandatory cases
@@ -151,9 +151,9 @@ Synthetic example: 2 vegetable meals + 1 non-vegetable meal + 3 extra rice =
   affected record, action, and before/after values where applicable.
 - **Confirmed:** Maintain traceability between sales, payment-category records,
   and SD reports; prevent duplicate processing and inconsistent financial updates.
-- **Confirmed:** Admin can view audit logs.
+- **Confirmed:** Complete Activity Logs access is reserved for Super Admin when implemented.
 - **Proposed:** Require correction reasons where appropriate.
-- **Unresolved:** Mandatory-reason cases and Assistant Admin audit-view access.
+- **Unresolved:** Other mandatory-reason cases beyond the existing Received reversal requirement.
 
 ## 11. Reports and exports
 
@@ -228,11 +228,11 @@ approval; unresolved details must be settled before affected checks can pass.
 | AC-06 | Confirmed | Quantity changes update line/order totals. The synthetic 2 vegetable + 1 non-vegetable + 3 extra rice order totals ₱220 at working prices. |
 | AC-07 | Confirmed | Approved categories are recorded accurately; For Deposit is not selectable. Selection claims neither verified GCash nor completed SD. |
 | AC-08 | Confirmed | Either role can select/reuse a visitor or create one within order entry. Visitor orders use Finance and remain separate from HRMS employees; name edits preserve stable identity and historical links, and names alone are not unique. Precise duplicate behavior remains unresolved. |
-| AC-09 | Confirmed | Both roles can mark/correct Received. Marking it records internally paid status without a separate Paid/Unpaid field, the accountable actor, and time. Corrections retain the original action and actor/time/order/action/before/after history. Other users cannot perform unauthorized changes. |
+| AC-09 | Confirmed | All roles can mark Received; only Admin and Super Admin can reverse it. Marking records internally paid status without a separate Paid/Unpaid field, the accountable actor, and time. Corrections retain the original action and actor/time/order/action/before/after history. Other users cannot perform unauthorized changes. |
 | AC-10 | Confirmed | Sales, category, reconciliation, and SD reports support daily/weekly/monthly/custom ranges with traceable totals. A recorded SD order counts without payroll processing and may appear in SD reporting before deduction; official cutoffs/internal consistency details remain to be agreed. |
 | AC-11 | Confirmed | Mock notifications send no actual messages, connect to no provider, and display no false delivery success. |
 | AC-12 | Confirmed | Logs, samples, and documentation expose no employee PII or credentials; backend checks deny unauthorized protected operations. |
-| AC-13 | Confirmed | Each role uses an individual account. Both can perform confirmed routine operations and Received corrections; only Admin manages users/roles and has confirmed audit-view access. Assistant Admin cannot manage users/roles or gain unrestricted security-settings access. |
+| AC-13 | Confirmed | Each role uses an individual account. All roles perform routine operations; only Admin and Super Admin reverse Received. Only Super Admin manages users and will have complete Activity Logs access. |
 | AC-14 | Confirmed | Important order, receipt, menu, visitor, import, and administrative user/role actions retain actor/time/record/action and applicable before/after values; corrections never erase the original audit history. |
 | AC-15 | Proposed | If correction reasons are approved, require and retain them for the agreed correction cases. |
 

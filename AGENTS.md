@@ -53,6 +53,7 @@
 - Prefer clear, accessible, consistent interfaces over unnecessary animation.
 - Brand palette: navy #160D76, blue #4094D9, orange #F08530, off-white #FFFFFA, and dark #222222.
 - Preferred typography: Cardo for headings and Open Sans for body text.
+- After frontend changes for the local demo, rebuild and reload the identified local frontend and verify it responds, unless the current task explicitly prohibits a restart or the environment cannot be identified safely. Preserve the database and unrelated services.
 
 ## Working Method
 - Work incrementally and explain the purpose of each step.

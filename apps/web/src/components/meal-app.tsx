@@ -9,6 +9,7 @@ import CustomersWorkspace from "./customers-workspace";
 import ReportsWorkspace from "./reports-workspace";
 import AppNavigation, { type Section } from "./app-navigation";
 import UsersWorkspace from "./users-workspace";
+import ActivityWorkspace from "./activity-workspace";
 
 export default function MealApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -111,10 +112,17 @@ export default function MealApp() {
         <form onSubmit={login}><label>Login name<input name="login_name" required maxLength={255} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
           <label>Password<input name="password" type="password" required maxLength={1024} autoComplete="current-password" /></label>
           <button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button></form>
-      </section> : session.user.password_change_required ? <section className="panel login-panel"><h2>Change your password</h2><p>Change your temporary password before continuing.</p><form onSubmit={changePassword}><label>Current password<input name="current_password" type="password" autoComplete="current-password" required /></label><label>New password<input name="new_password" type="password" autoComplete="new-password" minLength={8} required /></label><button disabled={busy}>Change password</button><button type="button" className="secondary" onClick={() => void logout()} disabled={busy}>Sign out</button></form></section> : section === "Users" && session.user.role === "super_admin" ? <UsersWorkspace request={request} /> : section === "Menu" ? <MenuWorkspace request={request} initialDate={menuDate} onSaved={menuSaved} /> : section === "Customers" ? <CustomersWorkspace request={request} role={session.user.role} /> : section === "Reports" ? <ReportsWorkspace request={request} /> : <>
-        <div className="section-heading"><div><h2>{entry ? "New meal order" : "Orders"}</h2><p className="muted">{entry ? "Choose a customer, select items, then review payment allocations." : "Find orders, review details, and record meal handover."}</p></div>
-          <button type="button" className={entry ? "secondary" : "brand-accent"} onClick={() => { setEntry(!entry); setSavedId(null); }}>
-            {entry ? "Back to orders" : "New order"}</button></div>
+      </section> : session.user.password_change_required ? <section className="panel login-panel"><h2>Change your password</h2><p>Change your temporary password before continuing.</p><form onSubmit={changePassword}><label>Current password<input name="current_password" type="password" autoComplete="current-password" required /></label><label>New password<input name="new_password" type="password" autoComplete="new-password" minLength={8} required /></label><button disabled={busy}>Change password</button><button type="button" className="secondary" onClick={() => void logout()} disabled={busy}>Sign out</button></form></section> : section === "Activity Logs" && session.user.role === "super_admin" ? <ActivityWorkspace request={request} /> : section === "Users" && session.user.role === "super_admin" ? <UsersWorkspace request={request} /> : section === "Menu" ? <MenuWorkspace request={request} initialDate={menuDate} onSaved={menuSaved} /> : section === "Customers" ? <CustomersWorkspace request={request} role={session.user.role} /> : section === "Reports" ? <ReportsWorkspace request={request} /> : <>
+        <header className="orders-page-header">
+          <div className="orders-page-heading">
+            <span className="orders-eyebrow"><span aria-hidden="true" /> ORDER OPERATIONS</span>
+            <h2>{entry ? "New meal order" : "Orders"}</h2>
+            <p>{entry ? "Choose a customer, add menu items, then review payment allocations." : "Review orders and record meal handover."}</p>
+          </div>
+          <button type="button" className={entry ? "secondary orders-page-action" : "brand-accent orders-page-action"} onClick={() => { setEntry(!entry); setSavedId(null); }}>
+            {entry ? "Back to orders" : "New order"}
+          </button>
+        </header>
         {!entry && <OrderRegister request={request} session={session} savedId={savedId} />}
       </>}
       {session && !session.user.password_change_required && entry && <div hidden={section !== "Orders"}><OrderEntry request={request} menuRevision={menuRevision}

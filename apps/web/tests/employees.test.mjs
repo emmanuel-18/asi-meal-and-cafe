@@ -12,6 +12,7 @@ test("employee search uses server pagination and preserves text identifiers", as
   await searchEmployees(request, "Synthetic Name", 0);
   assert.match(paths[1], /q=Synthetic\+Name&limit=20&offset=0/);
   assert.equal(canImport("admin"), true); assert.equal(canImport("assistant_admin"), false);
+  assert.equal(canImport("super_admin"), true);
 });
 
 test("file selection rejects wrong extension and oversize without reading contents", () => {

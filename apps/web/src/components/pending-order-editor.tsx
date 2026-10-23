@@ -70,12 +70,11 @@ export default function PendingOrderEditor({ order, request, onCancel, onSaved, 
 
   return <section className="pending-editor" aria-labelledby="pending-editor-heading">
     <h4 id="pending-editor-heading">Edit Pending order</h4>
-    <p className="muted">Customer, service date and recorded menu #{order.menu_id} are fixed. Existing lines keep their recorded prices and categories. Additions and replacements use the server&apos;s recorded-menu offerings.</p>
     {error && <div className="error" role="alert"><p>{error}</p><button type="button" className="secondary" disabled={saving} onClick={() => void onReload()}>Reload latest order</button></div>}
     <form onSubmit={save} noValidate>
       <fieldset className="entry-fields" disabled={fieldsDisabled}><legend className="sr-only">Permitted Pending edits</legend>
         <h4>Items</h4>{errors.items && <p className="field-error" role="alert">{errors.items}</p>}
-        <div className="table-scroll" role="region" aria-label="Editable order items" tabIndex={0}><table><caption className="sr-only">Editable order items; prices are read-only</caption>
+        <div className="table-scroll editable-items" role="region" aria-label="Editable order items" tabIndex={0}><table><caption className="sr-only">Editable order items; prices are read-only</caption>
           <thead><tr><th scope="col">Item and recorded price</th><th scope="col">Quantity</th><th scope="col">Replace / remove</th></tr></thead>
           <tbody>{draft.lines.map((line, index) => <tr key={line.key}><th scope="row">{line.name}<small>{line.category.replaceAll("_", " ")} · {pesos(line.unitPrice)} · {line.lineId === null ? "New snapshot on save" : "Existing snapshot"}</small></th>
             <td><div className="quantity"><button type="button" className="secondary" aria-label={`Decrease item ${index + 1}`} disabled={!/^\d+$/.test(line.quantity) || Number(line.quantity) <= 1}
@@ -87,7 +86,7 @@ export default function PendingOrderEditor({ order, request, onCancel, onSaved, 
                 onClick={() => changeQuantity(line.key, String(Number(line.quantity) + 1))}>+</button></div>
               {errors[`quantity-${line.key}`] && <p className="field-error" id={`error-${line.key}`}>{errors[`quantity-${line.key}`]}</p>}</td>
             <td><div className="edit-line-actions"><select value="" aria-label={`Replace item ${index + 1}`} disabled={!menu || menuLoading} onChange={e => replace(line.key, e.target.value)}>
-              <option value="">Replace with offering…</option>{offerings.map(item => <option key={item.id} value={item.id}>{item.item_name} · {pesos(item.unit_price)}</option>)}</select>
+              <option value="">Replace</option>{offerings.map(item => <option key={item.id} value={item.id}>{item.item_name} · {pesos(item.unit_price)}</option>)}</select>
               <button type="button" className="secondary" disabled={draft.lines.length <= 1} onClick={() => setDraft(current => ({ ...current, lines: current.lines.filter(i => i.key !== line.key) }))}
                 aria-label={`Remove item ${index + 1}`}>Remove</button></div></td></tr>)}</tbody></table></div>
         <div className="offering-picker">

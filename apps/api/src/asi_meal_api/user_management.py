@@ -1,6 +1,6 @@
 ﻿"""Transactional account administration. Secrets never enter audit payloads."""
-from datetime import datetime, timezone
-from sqlalchemy import select, text, update
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from asi_meal_api.db import models as m
 from asi_meal_api.orders import ActorContext, Conflict, Forbidden, NotFound, OrderError
@@ -30,7 +30,7 @@ def event(session, actor_id, target_id, action, before, after, reason=None):
 
 def revoke(session, user_id, now):
     session.execute(update(m.AuthSession).where(m.AuthSession.user_id == user_id,
-        m.AuthSession.revoked_at.is_(None)).values(revoked_at=now))
+        m.AuthSession.revoked_at.is_(None)).values(revoked_at=func.greatest(now, m.AuthSession.created_at)))
 
 
 def name(value):
@@ -94,7 +94,7 @@ class UserService:
             if target.role_code == "super_admin":
                 raise Forbidden("Super Admin accounts cannot be changed here")
             before = {"display_name": target.display_name, "role": target.role_code, "is_enabled": target.is_enabled}
-            now = datetime.now(timezone.utc)
+            now = max(datetime.now(timezone.utc), target.updated_at + timedelta(microseconds=1))
             if display is not None: target.display_name = display
             if role is not None: target.role_code = role
             if enabled is not None: target.is_enabled = enabled

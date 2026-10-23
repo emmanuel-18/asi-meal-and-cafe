@@ -23,6 +23,36 @@ business HTTP integration is absent.
   expiration/revocation and user/expiry indexes. Prior revisions are unchanged.
   Downgrade removes only session storage and requires separate authorization on
   real targets; its upgrade/rollback/re-upgrade are tested on disposable data.
+- `0004_super_admin`: extends the allowed role constraint and inserts the role;
+  it does not promote existing users. Downgrade refuses while any user references
+  Super Admin. `0005_password_change_required` adds the mandatory-change flag,
+  defaulting to false for existing users. Downgrades require separate review.
+
+Stage 14F.3 adds authenticated Super Admin-only `GET`/`POST /api/users` and
+`PATCH /api/users/{id}`. Account creation or reset requires an administrator-entered
+temporary password; the recipient must change it using `POST /auth/change-password`
+before ordinary protected operations. Login, session check, password change, and
+logout remain available in that restricted state. Role changes, resets and
+deactivation revoke sessions atomically with the account update and audit event;
+password change revokes other sessions. Account administration cannot create,
+disable or demote Super Admins through HTTP. The local promotion operator is
+self-attested, not authenticated as the target account. Audit records exclude
+passwords and session secrets. Stage 14F.4 adds read-only Super Admin-only
+`GET /api/activity` and `GET /api/activity/{event_id}`. The listing accepts
+inclusive Philippine dates, actor ID, action, entity and reference filters,
+bounded limits and a filter-bound newest-first cursor. Both endpoints return
+allowlisted fields only; employee references, raw audit JSON, session IDs and
+free-text correction explanations are excluded. Correction reason labels come
+from the approved reason codes. Actor names are current, not historical snapshots.
+Only actions actually recorded can appear; unsuccessful login attempts and
+ordinary reads are examples of gaps. No migration was added for this view;
+global audit scans may need an index after measurement on realistic data.
+
+For an authorized rollout, verify the database identity, preserve backups and
+apply both migrations before deploying the matching backend and frontend. Follow
+the [local demo runbook](../../docs/local-demo-runbook.md) for the explicit
+promotion procedure. Do not upgrade or promote the currently running demo without
+a separately authorized rollout.
 
 For a separately authorized target, run Alembic from `apps/api` with an explicitly
 supplied `ASI_DATABASE_URL` using the `postgresql+psycopg` dialect. Keep its value
@@ -436,6 +466,15 @@ the existing menu serializer and stored-actor authorization, returns 404 if abse
 and introduces no menu writes, schema change or modification to the PATCH contract.
 
 ## Verification
+
+Local recovery of an existing active Super Admin uses the interactive
+`recover-super-admin` CLI described in the [local runbook](../../docs/local-demo-runbook.md).
+It requires independent verification of the database, local administrative
+access, self-attested operator attribution, a nonsecret reason, explicit
+confirmation and hidden temporary-password input. It atomically requires a
+password change, revokes sessions and records a safe audit event. It is not an
+HTTP endpoint, an account-creation mechanism, or a substitute for protected
+backups and independently verified restores.
 
 From the project root using the existing virtual environment:
 
