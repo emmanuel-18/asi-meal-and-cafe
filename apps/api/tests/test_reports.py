@@ -213,7 +213,8 @@ def test_authorization_read_only_snapshot_and_connection_reset(env):
 
 
 @pytest.mark.parametrize("change", ["reverse", "mark", "correct"])
-def test_concurrent_reports_keep_one_snapshot_and_next_call_reflects_changes(env, change):
+@pytest.mark.parametrize("include_details", [False, True])
+def test_concurrent_reports_keep_one_snapshot_and_next_call_reflects_changes(env, change, include_details):
     engine, g, orders, reports, admin, _, _ = env
     order = make_order(env, received=change != "mark", allocations=(Allocation("sd", Decimal("245")),))
     period = DateRange.daily(g["day"])
@@ -241,7 +242,7 @@ def test_concurrent_reports_keep_one_snapshot_and_next_call_reflects_changes(env
     event.listen(engine, "after_cursor_execute", pause)
     try:
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="report") as reader, ThreadPoolExecutor(max_workers=1) as writer:
-            read = reader.submit(reports.report_bundle, admin, period)
+            read = reader.submit(reports.report_bundle, admin, period, include_export_details=include_details)
             try:
                 assert payments_read.wait(10)
                 writer.submit(update).result(timeout=10)
@@ -252,4 +253,6 @@ def test_concurrent_reports_keep_one_snapshot_and_next_call_reflects_changes(env
         release.set()
         event.remove(engine, "after_cursor_execute", pause)
     assert_reconciles(old_snapshot, "0" if change == "mark" else "245")
+    if include_details:
+        assert sum((o.total for o in old_snapshot.export_details.orders), Decimal(0)) == old_snapshot.sales.recognized_sales
     assert_reconciles(reports.report_bundle(admin, period), {"mark": "245", "reverse": "0", "correct": "295"}[change])

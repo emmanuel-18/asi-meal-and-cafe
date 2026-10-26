@@ -668,6 +668,8 @@ button.drawer-close { align-self: flex-end; }
   }
 }
 
+.report-download-excel { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; max-width: 100%; white-space: nowrap; }
+.report-download-excel svg { flex-shrink: 0; }
 .report-download { position: relative; max-width: 100%; }
 .report-download > button { display: inline-flex; align-items: center; gap: .4rem; }
 .report-download-options { position: absolute; right: 0; top: calc(100% + .25rem); z-index: 10; min-width: 10rem; max-width: calc(100vw - 2rem); padding: .25rem; background: #FFFFFA; border: 1px solid #c8d4e8; border-radius: .4rem; box-shadow: 0 4px 12px #160d7626; }

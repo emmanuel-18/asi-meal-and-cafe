@@ -2,7 +2,7 @@
 
 Every public read owns a PostgreSQL REPEATABLE READ, READ ONLY transaction.
 Dates are explicit Philippine operational calendar dates, not timestamps. Actor
-contexts must come from a future verified session provider, never request bodies.
+contexts come from verified server-side sessions, never request bodies.
 """
 
 import calendar
@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
@@ -22,10 +23,15 @@ from asi_meal_api.orders import ActorContext, Forbidden
 ZERO = Decimal("0.00")
 PAYMENT_CATEGORIES = ("cash", "gcash", "sd", "incentive", "finance")
 ITEM_CATEGORIES = ("vegetable", "non_vegetable", "extra_rice")
+MAX_EXPORT_DAYS = 3660
 
 
 class ReportInputError(ValueError):
     pass
+
+
+class ReportReconciliationError(RuntimeError):
+    """A detailed report cannot safely be reconciled; never contains personal data."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +150,108 @@ class ReportBundle:
     salary_deduction: SalaryDeductionReport
 
 
+@dataclass(frozen=True, slots=True)
+class ExportItem:
+    order_item_id: int
+    line_number: int
+    source_menu_item_id: int
+    item_name: str
+    category: str
+    unit_price: Decimal
+    quantity: int
+    line_total: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class ExportOrder:
+    order_id: int
+    service_date: date
+    menu_id: int
+    customer_type: Literal["employee", "visitor"]
+    employee_number: str | None
+    visitor_id: int | None
+    customer_name: str
+    position: str | None
+    campaign: str | None
+    line_of_business: str | None
+    items: tuple[ExportItem, ...]
+    allocations: tuple[PaymentTotal, ...]
+    total: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class ExportOffering:
+    menu_item_id: int
+    dish_id: int
+    item_name: str
+    category: str
+    unit_price: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class ExportMenu:
+    menu_id: int
+    offerings: tuple[ExportOffering, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExportMenuDate:
+    service_date: date
+    assigned_menu_id: int | None
+    recorded_menu_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExportDaily:
+    service_date: date
+    recognized_sales: Decimal
+    received_order_count: int
+    meal_quantity: int
+    item_quantity: int
+    payments: tuple[PaymentTotal, ...]
+    allocated_total: Decimal
+    allocation_difference: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class ExportSDCampaign:
+    campaign: str | None
+    sd_amount: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class ExportDetails:
+    period: DateRange
+    orders: tuple[ExportOrder, ...]
+    menu_dates: tuple[ExportMenuDate, ...]
+    menus: tuple[ExportMenu, ...]
+    daily: tuple[ExportDaily, ...]
+    sd_campaigns: tuple[ExportSDCampaign, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExportReportBundle(ReportBundle):
+    export_details: ExportDetails
+
+
+def _reconcile(condition: bool):
+    if not condition:
+        raise ReportReconciliationError("Report data could not be reconciled")
+
+
+def _centavos(amount: Decimal) -> int:
+    _reconcile(isinstance(amount, Decimal) and amount.is_finite() and amount >= ZERO)
+    numerator, denominator = amount.as_integer_ratio()
+    cents, remainder = divmod(numerator * 100, denominator)
+    _reconcile(remainder == 0)
+    return cents
+
+
+def _from_centavos(cents: int) -> Decimal:
+    absolute = abs(cents)
+    return Decimal(f"{'-' if cents < 0 else ''}{absolute // 100}.{absolute % 100:02d}")
+
+
 class ReportingService:
     def __init__(self, session_factory: Callable[[], Session]):
         self._sessions = session_factory
@@ -171,6 +279,7 @@ class ReportingService:
             m.Order.id, m.Order.service_date, m.Order.employee_number,
             m.Order.customer_name_snapshot, m.Order.position_snapshot,
             m.Order.campaign_snapshot, m.Order.line_of_business_snapshot,
+            m.Order.visitor_id, m.Order.menu_id,
         ).where(m.Order.is_received.is_(True), m.Order.service_date >= period.start,
                 m.Order.service_date <= period.end).cte("received_orders")
 
@@ -240,10 +349,147 @@ class ReportingService:
         with self._snapshot(actor, period) as session:
             return self._sd(session, period, self._received(period))
 
-    def report_bundle(self, actor: ActorContext, period: DateRange) -> ReportBundle:
+    @staticmethod
+    def _export_details(session: Session, period: DateRange, received,
+                        sales: SalesSummary, payments: PaymentSummary,
+                        sd: SalaryDeductionReport) -> ExportDetails:
+        days = (period.end - period.start).days + 1
+        if days > MAX_EXPORT_DAYS:
+            raise ReportInputError(f"Export details support at most {MAX_EXPORT_DAYS} inclusive dates; choose a shorter period")
+
+        # Five batched reads, independent of order count; no HRMS/customer joins,
+        # no pagination, and no raw item-to-allocation fan-out.
+        records = session.execute(select(received).order_by(received.c.service_date, received.c.id)).mappings().all()
+        items: dict[int, list[ExportItem]] = {}
+        for row in session.execute(select(
+            m.OrderItem.order_id, m.OrderItem.id, m.OrderItem.line_number,
+            m.OrderItem.source_menu_item_id, m.OrderItem.item_name,
+            m.OrderItem.category_code_snapshot, m.OrderItem.unit_price,
+            m.OrderItem.quantity, m.OrderItem.line_total,
+        ).join(received, received.c.id == m.OrderItem.order_id)
+                .order_by(m.OrderItem.order_id, m.OrderItem.line_number)):
+            items.setdefault(row[0], []).append(ExportItem(*row[1:]))
+        allocations: dict[int, dict[str, Decimal]] = {}
+        for order_id, category, amount in session.execute(select(
+            m.PaymentAllocation.order_id, m.PaymentAllocation.payment_category_code,
+            m.PaymentAllocation.amount,
+        ).join(received, received.c.id == m.PaymentAllocation.order_id)):
+            values = allocations.setdefault(order_id, {})
+            _reconcile(category in PAYMENT_CATEGORIES and category not in values and _centavos(amount) > 0)
+            values[category] = amount
+
+        assigned = dict(session.execute(select(m.MenuDate.service_date, m.MenuDate.menu_id)
+            .where(m.MenuDate.service_date >= period.start, m.MenuDate.service_date <= period.end)).all())
+        relevant_menus = select(m.MenuDate.menu_id).where(
+            m.MenuDate.service_date >= period.start, m.MenuDate.service_date <= period.end,
+        ).union(select(received.c.menu_id))
+        offerings: dict[int, list[ExportOffering]] = {}
+        for row in session.execute(select(
+            m.MenuItem.menu_id, m.MenuItem.id, m.MenuItem.dish_id,
+            m.MenuItem.item_name, m.MenuItem.category_code, m.MenuItem.unit_price,
+        ).where(m.MenuItem.menu_id.in_(relevant_menus)).order_by(m.MenuItem.menu_id, m.MenuItem.id)):
+            offerings.setdefault(row[0], []).append(ExportOffering(*row[1:]))
+
+        orders = []
+        by_day: dict[date, list[ExportOrder]] = {}
+        item_totals: dict[tuple, tuple[int, int]] = {}
+        category_totals = {code: (0, 0) for code in ITEM_CATEGORIES}
+        payment_totals = dict.fromkeys(PAYMENT_CATEGORIES, 0)
+        campaigns: dict[str | None, int] = {}
+        sd_orders = []
+        sd_employees: dict[str, tuple[int, int]] = {}
+        for record in records:
+            order_id = record["id"]
+            lines = tuple(items.get(order_id, ()))
+            amounts = allocations.get(order_id, {})
+            _reconcile(bool(lines) and bool(amounts))
+            total = 0
+            for line in lines:
+                _reconcile(line.category in ITEM_CATEGORIES and line.quantity > 0)
+                value = _centavos(line.line_total)
+                _reconcile(value == _centavos(line.unit_price) * line.quantity)
+                total += value
+                key = (line.source_menu_item_id, line.item_name, line.category, line.unit_price)
+                quantity, amount = item_totals.get(key, (0, 0))
+                item_totals[key] = (quantity + line.quantity, amount + value)
+                quantity, amount = category_totals[line.category]
+                category_totals[line.category] = (quantity + line.quantity, amount + value)
+            _reconcile(total == sum(_centavos(amount) for amount in amounts.values()))
+            employee = record["employee_number"]
+            visitor = record["visitor_id"]
+            _reconcile((employee is not None) != (visitor is not None))
+            if visitor is not None:
+                _reconcile(set(amounts) == {"finance"})
+            order = ExportOrder(
+                order_id, record["service_date"], record["menu_id"],
+                "employee" if employee is not None else "visitor", employee, visitor,
+                record["customer_name_snapshot"], record["position_snapshot"],
+                record["campaign_snapshot"], record["line_of_business_snapshot"], lines,
+                tuple(PaymentTotal(code, amounts[code]) for code in PAYMENT_CATEGORIES if code in amounts),
+                _from_centavos(total),
+            )
+            orders.append(order)
+            by_day.setdefault(order.service_date, []).append(order)
+            for code, amount in amounts.items():
+                payment_totals[code] += _centavos(amount)
+            if "sd" in amounts:
+                _reconcile(employee is not None)
+                sd_amount = amounts["sd"]
+                sd_orders.append(SDOrder(order_id, order.service_date, employee, order.customer_name,
+                                        order.position, order.campaign, order.line_of_business, sd_amount))
+                count, amount = sd_employees.get(employee, (0, 0))
+                sd_employees[employee] = (count + 1, amount + _centavos(sd_amount))
+                campaigns[order.campaign] = campaigns.get(order.campaign, 0) + _centavos(sd_amount)
+
+        # Independently compare every detailed grouping to existing SQL reports.
+        _reconcile(len(orders) == sales.received_order_count)
+        _reconcile(sum(_centavos(order.total) for order in orders) == _centavos(sales.recognized_sales))
+        _reconcile(item_totals == {(i.source_menu_item_id, i.item_name, i.category, i.unit_price):
+                                  (i.quantity, _centavos(i.amount)) for i in sales.items})
+        _reconcile(category_totals == {i.category: (i.quantity, _centavos(i.amount)) for i in sales.categories})
+        _reconcile(sum(value[0] for value in category_totals.values()) == sales.item_quantity)
+        _reconcile(sum(category_totals[code][0] for code in ("vegetable", "non_vegetable")) == sales.meal_quantity)
+        _reconcile(payment_totals == {i.category: _centavos(i.amount) for i in payments.totals})
+        _reconcile(payment_totals == {i.category: _centavos(i.amount) for i in sales.payments})
+        _reconcile(sum(payment_totals.values()) == _centavos(payments.total) == _centavos(sales.allocated_total)
+                   == _centavos(sales.recognized_sales) and sales.allocation_difference == ZERO)
+        _reconcile(sorted(sd_orders, key=lambda o: (o.employee_number, o.service_date, o.order_id)) == list(sd.orders))
+        _reconcile(sd_employees == {i.employee_number: (i.order_count, _centavos(i.sd_amount)) for i in sd.employees})
+        _reconcile(sum(campaigns.values()) == payment_totals["sd"] == _centavos(sd.total))
+
+        daily = []
+        menu_dates = []
+        for offset in range(days):
+            day = period.start + timedelta(days=offset)
+            day_orders = by_day.get(day, ())
+            day_payments = dict.fromkeys(PAYMENT_CATEGORIES, 0)
+            for order in day_orders:
+                for allocation in order.allocations:
+                    day_payments[allocation.category] += _centavos(allocation.amount)
+            total = sum(_centavos(order.total) for order in day_orders)
+            allocated = sum(day_payments.values())
+            _reconcile(total == allocated)
+            daily.append(ExportDaily(day, _from_centavos(total), len(day_orders),
+                sum(i.quantity for o in day_orders for i in o.items if i.category != "extra_rice"),
+                sum(i.quantity for o in day_orders for i in o.items),
+                tuple(PaymentTotal(code, _from_centavos(day_payments[code])) for code in PAYMENT_CATEGORIES),
+                _from_centavos(allocated), _from_centavos(total - allocated)))
+            menu_dates.append(ExportMenuDate(day, assigned.get(day), tuple(sorted({o.menu_id for o in day_orders}))))
+        return ExportDetails(period, tuple(orders), tuple(menu_dates),
+            tuple(ExportMenu(menu_id, tuple(offerings.get(menu_id, ())))
+                  for menu_id in sorted(set(assigned.values()) | {o.menu_id for o in orders})),
+            tuple(daily), tuple(ExportSDCampaign(campaign, _from_centavos(amount))
+                for campaign, amount in sorted(campaigns.items(), key=lambda value: (value[0] is not None, value[0] or ""))))
+
+    def report_bundle(self, actor: ActorContext, period: DateRange, *,
+                      include_export_details: bool = False) -> ReportBundle | ExportReportBundle:
         """Use this call when all three reports must describe the same snapshot."""
         with self._snapshot(actor, period) as session:
             received = self._received(period)
             payments = self._payments(session, period, received)
-            return ReportBundle(self._sales(session, period, received, payments), payments,
-                                self._sd(session, period, received))
+            sales = self._sales(session, period, received, payments)
+            sd = self._sd(session, period, received)
+            if include_export_details:
+                details = self._export_details(session, period, received, sales, payments, sd)
+                return ExportReportBundle(sales, payments, sd, details)
+            return ReportBundle(sales, payments, sd)

@@ -13,7 +13,7 @@ from asi_meal_api import business_schemas as s
 from asi_meal_api.business_services import BusinessService
 from asi_meal_api.employee_imports import EmployeeImportService
 from asi_meal_api.orders import ActorContext, Allocation, Correction, CreateOrder, EditPending, ItemSelection, OrderResult, OrderService, QuantityChange
-from asi_meal_api.reports import DateRange, PaymentSummary, ReportBundle, ReportInputError, ReportingService, SalaryDeductionReport, SalesSummary
+from asi_meal_api.reports import DateRange, ExportReportBundle, PaymentSummary, ReportBundle, ReportInputError, ReportingService, SalaryDeductionReport, SalesSummary
 
 
 Actor = Annotated[ActorContext, Depends(authenticated_actor)]
@@ -232,6 +232,6 @@ def sd_report(request: Request, actor: Actor, dates: Period):
     return ReportingService(services(request)).salary_deduction_report(actor, dates)
 
 
-@report_router.get("/bundle", response_model=ReportBundle)
-def report_bundle(request: Request, actor: Actor, dates: Period):
-    return ReportingService(services(request)).report_bundle(actor, dates)
+@report_router.get("/bundle", response_model=ExportReportBundle | ReportBundle)
+def report_bundle(request: Request, actor: Actor, dates: Period, include_export_details: bool = False):
+    return ReportingService(services(request)).report_bundle(actor, dates, include_export_details=include_export_details)

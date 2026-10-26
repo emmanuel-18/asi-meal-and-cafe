@@ -3,6 +3,9 @@
 This directory always selects Compose project `asi-meal-dev`. It does not manage
 the original standalone demo database. This separate project can use the
 configured development HTTPS port only after it is confirmed unbound.
+The owner-confirmed development endpoint is `https://192.168.45.145:43873/`;
+this supersedes older port assignments and historical protected-port labels.
+Confirm the gateway's Compose labels and volume ownership before a rebuild.
 Docker Desktop and Compose are required; dependencies run in Node 24, Python 3.13
 and PostgreSQL 17 containers.
 

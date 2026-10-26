@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RequestApi } from "@/lib/api";
 import { centavos, paymentLabels, pesos } from "@/lib/meal";
 import { categoryLabels } from "@/lib/menus";
-import { barWidth, initialFilter, loadReport, matchingEmployees, reportPath, periodLabel, salaryByCampaign, type ReportFilter, type ReportBundle, type ReportMode } from "@/lib/reports";
+import { barWidth, initialFilter, loadExportReport, loadReport, matchingEmployees, reportPath, periodLabel, salaryByCampaign, type ReportFilter, type ReportBundle, type ReportMode } from "@/lib/reports";
 import { downloadReport } from "@/lib/report-export";
-import ReportDownloadMenu from "./report-download-menu";
 
 export default function ReportsWorkspace({ request }: { request: RequestApi }) {
   const [filter, setFilter] = useState(initialFilter);
@@ -17,6 +16,8 @@ export default function ReportsWorkspace({ request }: { request: RequestApi }) {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [exporting, setExporting] = useState(false);
+  const exportRun = useRef<AbortController | null>(null);
+  useEffect(() => () => { exportRun.current?.abort(); }, [request]);
 
   useEffect(() => {
     if (!applied) return;
@@ -28,6 +29,7 @@ export default function ReportsWorkspace({ request }: { request: RequestApi }) {
   }, [request, applied, revision]);
 
   function updateFilter(next: ReportFilter) {
+    exportRun.current?.abort();
     setFilter(next); setBundle(null); setQuery("");
     try { reportPath(next); } catch (error) {
       setApplied(null); setLoading(false);
@@ -35,13 +37,17 @@ export default function ReportsWorkspace({ request }: { request: RequestApi }) {
     }
     setError(""); setLoading(true); setApplied(next);
   }
-  function refresh() { setError(""); setBundle(null); setLoading(true); setRevision(value => value + 1); }
-  async function exportReport(format: "excel" | "pdf") {
-    if (!bundle || !applied || loading || exporting) return;
+  function refresh() { exportRun.current?.abort(); setError(""); setBundle(null); setLoading(true); setRevision(value => value + 1); }
+  async function exportReport() {
+    if (!bundle || !applied || loading || exporting || exportRun.current) return;
+    const controller = new AbortController(); exportRun.current = controller;
     setExporting(true); setError("");
-    try { const pdf = await downloadReport(bundle, applied.mode, format); if (pdf) pdf.document.save(pdf.filename); }
-    catch { setError("Unable to download the report. Please try again."); }
-    finally { setExporting(false); }
+    try {
+      const data = await loadExportReport(request, applied, bundle.sales.period, controller.signal);
+      if (controller.signal.aborted) return;
+      await downloadReport(data, applied.mode, "excel", controller.signal);
+    } catch (error) { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Unable to download the report. Please try again."); }
+    finally { if (exportRun.current === controller) { exportRun.current = null; setExporting(false); } }
   }
   const employees = bundle ? matchingEmployees(bundle, query) : [];
   const grouped = bundle ? salaryByCampaign(bundle.salary_deduction.orders) : null;
@@ -59,7 +65,11 @@ export default function ReportsWorkspace({ request }: { request: RequestApi }) {
         {filter.mode === "custom" && <><label>Start date<input type="date" required value={filter.start} onChange={event => updateFilter({ ...filter, start: event.target.value })} /></label>
           <label>End date<input type="date" required value={filter.end} onChange={event => updateFilter({ ...filter, end: event.target.value })} /></label></>}
         <button type="submit" className="secondary" disabled={loading || !applied}>Refresh report</button>
-        <ReportDownloadMenu disabled={!bundle || loading || exporting} onDownload={format => void exportReport(format)} />
+        <button type="button" className="report-download-excel" disabled={!bundle || loading || exporting} aria-busy={exporting}
+          onClick={() => void exportReport()}>
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg>
+          {exporting ? "Preparing Excel..." : "Download Excel"}
+        </button>
       </form>
       {error && <p className="error" role="alert">{error}</p>}{loading && <p role="status">Loading report…</p>}
       {bundle && applied && <p className="report-period" role="status"><strong>{periodLabel(applied.mode, bundle.sales.period)}</strong><br /><span className="muted">{bundle.sales.period.start} through {bundle.sales.period.end} · Inclusive · Philippine time</span></p>}

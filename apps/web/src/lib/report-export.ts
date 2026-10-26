@@ -1,4 +1,4 @@
-import type { ReportBundle, ReportMode } from "./reports.ts";
+import type { ExportReportBundle, ReportBundle, ReportMode } from "./reports.ts";
 import { periodLabel } from "./reports.ts";
 import { centavos, paymentLabels, pesos } from "./meal.ts";
 import { categoryLabels } from "./menus.ts";
@@ -32,7 +32,7 @@ export function reportSections(bundle: ReportBundle): Section[] {
   ];
 }
 
-export async function downloadReport(bundle: ReportBundle, mode: ReportMode, format: "excel" | "pdf") {
+export async function downloadReport(bundle: ReportBundle, mode: ReportMode, format: "excel" | "pdf", signal?: AbortSignal) {
   const period = bundle.sales.period;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(period.start) || !/^\d{4}-\d{2}-\d{2}$/.test(period.end)) {
     throw new Error("Invalid report period.");
@@ -44,53 +44,10 @@ export async function downloadReport(bundle: ReportBundle, mode: ReportMode, for
   const allocatedCents = centavos(bundle.payments.total, false);
   const reconciliation = salesCents === null || allocatedCents === null ? "Unavailable" : salesCents === allocatedCents ? "Balanced" : "Difference detected";
   if (format === "excel") {
-    const { default: ExcelJS } = await import("exceljs");
-    const workbook = new ExcelJS.Workbook();
-    const overview = workbook.addWorksheet("Executive Overview");
-    const detail = workbook.addWorksheet("Detailed Report");
-    const register = workbook.addWorksheet("SD Register");
-    for (const sheet of [overview, detail, register]) {
-      sheet.addRow(["ASI Meal Management - Report"]); sheet.addRow([heading]);
-      sheet.addRow(["Currently Received orders only. SD allocations do not indicate payroll completion."]);
-      sheet.getRow(1).font = { bold: true, size: 16, color: { argb: "FF160D76" } };
-      sheet.views = [{ state: "frozen", ySplit: 3 }];
-      sheet.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
-      sheet.columns = Array.from({ length: 8 }, () => ({ width: 23 }));
-    }
-    overview.addRow([]);
-    overview.addRow(["Payment reconciliation", reconciliation]);
-    overview.addRow(["Received orders", bundle.sales.received_order_count]);
-    overview.addRow(["Meals", bundle.sales.meal_quantity]);
-    overview.addRow(["Items", bundle.sales.item_quantity]);
-    for (const [label, amount] of [["Recognized sales", bundle.sales.recognized_sales], ["Total allocated", bundle.payments.total], ["Salary Deduction", bundle.salary_deduction.total]]) {
-      const row = overview.addRow([label, pesos(amount)]);
-      const number = excelMoney(pesos(amount));
-      if (number !== null) { row.getCell(2).value = number; row.getCell(2).numFmt = '"₱"#,##0.00'; }
-    }
-    overview.addRow(["Report basis", "Currently Received orders"]);
-    for (const [sheet, section] of [[overview, sections[1]], [overview, sections[3]], ...sections.slice(0, 5).map(section => [detail, section] as const), [register, sections[5]]] as const) {
-      sheet.addRow([]); const title = sheet.addRow([section.title]); title.font = { bold: true, color: { argb: "FF160D76" } };
-      const header = sheet.addRow(section.headers); header.font = { bold: true };
-      for (const row of section.rows) {
-        const added = sheet.addRow(row);
-        added.eachCell(cell => { cell.alignment = { wrapText: true, vertical: "top" }; });
-        const moneyColumns: Record<string, number[]> = {
-          "Sales by category": [3], "Recorded item sales": [3, 5], "Payment allocations": [2],
-          "Salary Deduction summary": [2], "Salary Deduction orders": [8],
-        };
-        const columns = section.title === "Sales summary" && row[0] === "Recognized sales" ? [2] : moneyColumns[section.title] ?? [];
-        for (const column of columns) {
-          const amount = excelMoney(row[column - 1]);
-          if (amount !== null) { const cell = added.getCell(column); cell.value = amount; cell.numFmt = '"₱"#,##0.00'; }
-        }
-      }
-      if (!section.rows.length) sheet.addRow(["No records for this period."]);
-    }
-    register.views = [{ state: "frozen", ySplit: 6 }];
-    register.columns = [18, 14, 20, 30, 24, 26, 26, 20].map(width => ({ width }));
-    register.autoFilter = { from: "A6", to: "H6" };
-    const bytes = await workbook.xlsx.writeBuffer();
-    const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const { buildPremiumExcel } = await import("./premium-excel.ts");
+    const bytes = await buildPremiumExcel(bundle as ExportReportBundle, mode);
+    if (signal?.aborted) return;
+    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
     const link = document.createElement("a"); link.href = url; link.download = `${filename}.xlsx`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } else {

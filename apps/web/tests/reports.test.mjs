@@ -1,4 +1,5 @@
 import test from "node:test";
+import { premiumFixture } from "./fixtures/premium-report.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
@@ -102,16 +103,14 @@ test("Excel download creates an actual workbook with the selected report", async
   URL.createObjectURL = value => { blob = value; return "blob:synthetic"; };
   URL.revokeObjectURL = () => {};
   try {
-    await downloadReport(bundle, "daily", "excel");
+    await downloadReport(premiumFixture({ start: "2040-02-29" }), "daily", "excel");
     assert.ok(clicked); assert.match(filename, /2040-02-29.*\.xlsx$/);
     const ExcelJS = (await import("exceljs")).default;
     const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(await blob.arrayBuffer());
-    assert.deepEqual(workbook.worksheets.map(sheet => sheet.name), ["Executive Overview", "Detailed Report", "SD Register"]);
-    const text = workbook.getWorksheet("Detailed Report").getColumn(1).values.join(" ");
-    assert.match(text, /Sales summary/); assert.match(workbook.getWorksheet("SD Register").getColumn(1).values.join(" "), /Salary Deduction orders/);
-    const sheet = workbook.getWorksheet("Detailed Report");
-    let sales; sheet.eachRow(row => { if (row.getCell(1).value === "Recognized sales") sales = row.getCell(2); });
-    assert.equal(sales.value, 175); assert.equal(sales.numFmt, '"₱"#,##0.00');
+    assert.deepEqual(workbook.worksheets.map(sheet => sheet.name), ["Executive Dashboard", "Daily Sales", "Salary Deduction List", "Mode of Payment"]);
+    const sheet = workbook.getWorksheet("Executive Dashboard");
+    assert.equal(sheet.getCell("A5").result, 195);
+    assert.equal(sheet.getCell("A5").numFmt, '"₱"#,##0.00');
   } finally { globalThis.document = previousDocument; URL.createObjectURL = previousCreate; URL.revokeObjectURL = previousRevoke; }
 });
 
@@ -126,14 +125,12 @@ test("Excel stores untrusted formula-like values as text and wraps long names", 
   let blob;
   globalThis.document = { createElement: () => ({ click() {} }) };
   URL.createObjectURL = value => { blob = value; return "blob:synthetic"; }; URL.revokeObjectURL = () => {};
-  const suspicious = { ...bundle, salary_deduction: { ...bundle.salary_deduction, orders: [
-    { ...bundle.salary_deduction.orders[0], customer_name: '=HYPERLINK("https://invalid.example")', position: "+" + "Synthetic".repeat(30) },
-  ] } };
+  const suspicious = premiumFixture({ name: '=HYPERLINK("https://invalid.example")' });
   try {
     await downloadReport(suspicious, "daily", "excel");
     const ExcelJS = (await import("exceljs")).default;
     const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(await blob.arrayBuffer());
-    const sheet = workbook.getWorksheet("SD Register");
+    const sheet = workbook.getWorksheet("Salary Deduction List");
     let found = false;
     sheet.eachRow(row => row.eachCell(cell => {
       if (cell.value === suspicious.salary_deduction.orders[0].customer_name) {
@@ -173,7 +170,7 @@ test("changing report controls applies valid periods immediately and clears inva
   const jsx = (type, props) => ({ type, props });
   const exports = {};
   new Function("require", "exports", code)(name => name === "react" ? {
-    useState: () => { const i = index++; return [states[i], value => updates.push([i, value])]; }, useEffect() {},
+    useState: () => { const i = index++; return [states[i], value => updates.push([i, value])]; }, useEffect() {}, useRef: () => ({ current: null }),
   } : name === "react/jsx-runtime" ? { jsx, jsxs: jsx } : {
     initialFilter, reportPath, loadReport, matchingEmployees, periodLabel,
   }, exports);

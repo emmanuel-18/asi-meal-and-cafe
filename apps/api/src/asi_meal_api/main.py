@@ -13,7 +13,7 @@ from asi_meal_api.auth_http import AuthRuntime, router, runtime_from_environment
 from asi_meal_api.business_http import directory_router, menu_router, order_router, report_router
 from asi_meal_api.employee_imports import ImportHistoryError, ImportSourceError
 from asi_meal_api.orders import Conflict, Forbidden, NotFound, OrderError
-from asi_meal_api.reports import ReportInputError
+from asi_meal_api.reports import ReportInputError, ReportReconciliationError
 from asi_meal_api.user_http import router as user_router
 from asi_meal_api.activity_http import router as activity_router
 
@@ -75,6 +75,11 @@ def create_app(auth: AuthRuntime | None = None) -> FastAPI:
     @application.exception_handler(ImportSourceError)
     async def invalid_business_input(request: Request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=422)
+
+    @application.exception_handler(ReportReconciliationError)
+    async def report_not_reconciled(request: Request, exc):
+        return JSONResponse({"detail": "Report data could not be reconciled. Refresh or contact an administrator.",
+                             "code": "REPORT_RECONCILIATION_FAILED"}, status_code=409)
 
     @application.exception_handler(ImportHistoryError)
     async def import_history_unavailable(request: Request, exc):

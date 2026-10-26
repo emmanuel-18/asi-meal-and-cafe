@@ -1,4 +1,4 @@
-import type { Category, Payment, RequestApi } from "./api.ts";
+import { ApiError, type Category, type Payment, type RequestApi } from "./api.ts";
 import { centavos } from "./meal.ts";
 
 export type ReportMode = "daily" | "weekly" | "monthly" | "custom";
@@ -21,6 +21,37 @@ export type ReportBundle = {
   payments: { period: Period; totals: { category: Payment; amount: string }[]; total: string };
   salary_deduction: { period: Period; total: string; employees: { employee_number: string; order_count: number; sd_amount: string }[]; orders: SDOrder[] };
 };
+
+export type ExportItem = { order_item_id: number; line_number: number; source_menu_item_id: number; item_name: string;
+  category: Category; unit_price: string; quantity: number; line_total: string };
+export type ExportOrder = { order_id: number; service_date: string; menu_id: number; customer_type: "employee" | "visitor";
+  employee_number: string | null; visitor_id: number | null; customer_name: string; position: string | null;
+  campaign: string | null; line_of_business: string | null; items: ExportItem[];
+  allocations: { category: Payment; amount: string }[]; total: string };
+export type ExportReportBundle = ReportBundle & { export_details: {
+  period: Period; orders: ExportOrder[];
+  menu_dates: { service_date: string; assigned_menu_id: number | null; recorded_menu_ids: number[] }[];
+  menus: { menu_id: number; offerings: { menu_item_id: number; dish_id: number; item_name: string; category: Category; unit_price: string }[] }[];
+  daily: { service_date: string; recognized_sales: string; received_order_count: number; meal_quantity: number; item_quantity: number;
+    payments: { category: Payment; amount: string }[]; allocated_total: string; allocation_difference: string }[];
+  sd_campaigns: { campaign: string | null; sd_amount: string }[];
+} };
+
+export async function loadExportReport(request: RequestApi, filter: ReportFilter, expected: Period, signal?: AbortSignal): Promise<ExportReportBundle> {
+  const path = reportPath(filter);
+  const days = (Date.parse(expected.end) - Date.parse(expected.start)) / 86400000 + 1;
+  if (!Number.isInteger(days) || days < 1 || days > 3660) throw new Error("Excel reports support at most 3,660 service dates. Choose a shorter period.");
+  try {
+    const result = await request<ExportReportBundle>(`${path}&include_export_details=true`, { signal });
+    if (!result.export_details || result.sales.period.start !== expected.start || result.sales.period.end !== expected.end) {
+      throw new Error("The export period could not be confirmed. Refresh the report and try again.");
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) throw new Error("Report totals could not be reconciled. Refresh or contact an administrator.");
+    throw error;
+  }
+}
 
 export function manilaDate(now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
