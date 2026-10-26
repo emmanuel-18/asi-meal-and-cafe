@@ -1,0 +1,16 @@
+{
+    default_sni {$DEV_HOST}
+    auto_https disable_redirects
+    admin off
+}
+
+https://{$DEV_HOST}:443, https://127.0.0.1:443, https://localhost:443 {
+    tls internal
+    @health path /health
+    handle @health {
+        reverse_proxy api:8000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}

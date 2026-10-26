@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { ApiError, apiRequest, type ApiOptions, type RequestApi, type Session } from "@/lib/api";
 import OrderEntry from "./order-entry";
 import OrderRegister from "./order-register";
@@ -101,14 +102,14 @@ export default function MealApp() {
     finally { form.reset(); setBusy(false); }
   }
 
-  return <div className={`app-shell${session ? "" : " is-signed-out"}`}>
+  return <div className={`app-shell${session && !session.user.password_change_required ? "" : " is-signed-out"}`}>
     <a className="skip-link" href="#main">Skip to content</a>
-    {!session && <header className="app-header login-header"><div className="brand"><h1>ASI Meal Management</h1><p>Meal Sales &amp; Payment Tracking</p></div></header>}
+    {(!session || session.user.password_change_required) && <header className="app-header login-header"><div className="brand"><Image src="/brand/asi-meal-logo-reversed.svg" width={236} height={58} alt="ASI Meal" priority /><p>ASI Meal Management</p></div></header>}
     {session && !session.user.password_change_required && <AppNavigation session={session} section={section} onSelect={setSection} onLogout={() => void logout()} busy={busy} />}
-    <main id="main" tabIndex={-1} className={session ? "workspace" : "login-space"}>
+    <main id="main" tabIndex={-1} className={session && !session.user.password_change_required ? "workspace" : "login-space"}>
       {notice && <div className={`notice${notice === "Signed out." ? " signed-out-notice" : ""}`} role="status">{notice}{notice !== "Signed out." && <button type="button" className="text-button" onClick={() => void check()}>Try again</button>}</div>}
       {checking ? <p role="status">Checking session…</p> : !session ? <section className="panel login-panel">
-        <h2>Sign in</h2><p className="muted">Enter your individual ASI Meal account details.</p>
+        <h2>Sign in</h2>
         <form onSubmit={login}><label>Login name<input name="login_name" required maxLength={255} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
           <label>Password<input name="password" type="password" required maxLength={1024} autoComplete="current-password" /></label>
           <button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button></form>

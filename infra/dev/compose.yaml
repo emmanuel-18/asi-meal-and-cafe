@@ -1,0 +1,104 @@
+name: asi-meal-dev
+
+services:
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DEV_HOST: ${DEV_HOST:?Set the current private LAN IPv4 address in .env}
+    ports:
+      - "${DEV_HOST}:${DEV_WEB_PORT:?Set the dedicated HTTPS port in .env}:443"
+      - "127.0.0.1:${DEV_WEB_PORT:?Set the dedicated HTTPS port in .env}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - dev_tls:/data
+      - dev_caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    networks:
+      dev:
+        ipv4_address: 172.30.242.2
+      ingress:
+
+  frontend:
+    build:
+      context: ../../apps/web
+      dockerfile: ../../infra/dev/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      ASI_API_ORIGIN: http://api:8000
+      ASI_ALLOWED_DEV_ORIGINS: "${DEV_HOST:?Set the current private LAN IPv4 address in .env}"
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ../../apps/web/src:/app/src:ro
+      - ../../apps/web/public:/app/public:ro
+      - ../../apps/web/next.config.ts:/app/next.config.ts:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 40s
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      dev:
+        ipv4_address: 172.30.242.4
+
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: ../../infra/dev/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      ASI_AUTH_ENABLED: "true"
+      ASI_AUTH_MODE: https
+      ASI_AUTH_ORIGINS: "https://${DEV_HOST}:${DEV_WEB_PORT},https://127.0.0.1:${DEV_WEB_PORT},https://localhost:${DEV_WEB_PORT}"
+      ASI_DATABASE_URL: "postgresql+psycopg://asi_meal_dev:${DEV_DB_PASSWORD:?Set a private URL-safe password in .env}@db:5432/asi_meal_dev"
+    volumes:
+      - ../../apps/api/src:/app/src:ro
+      - ../../apps/api/alembic:/app/alembic:ro
+      - ../../apps/api/alembic.ini:/app/alembic.ini:ro
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      dev:
+        ipv4_address: 172.30.242.3
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: asi_meal_dev
+      POSTGRES_DB: asi_meal_dev
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD:?Set a private URL-safe password in .env}
+    volumes:
+      - dev_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U asi_meal_dev -d asi_meal_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      dev:
+        ipv4_address: 172.30.242.5
+
+volumes:
+  dev_postgres:
+  dev_tls:
+  dev_caddy_config:
+
+networks:
+  ingress:
+  dev:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.242.0/24

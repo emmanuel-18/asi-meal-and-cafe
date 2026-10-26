@@ -255,6 +255,138 @@ tfoot { font-weight: 600; background: #f4f4f9; }
   .daily-menu-workspace *, .customers-workspace * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 
+/* Authentication uses the same visual language as the application shell, with a
+   focused two-panel layout that becomes a compact branded header on mobile. */
+body:has(.app-shell.is-signed-out) {
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+  padding: 40px;
+  background: #eeefed;
+}
+.app-shell.is-signed-out {
+  display: grid;
+  grid-template-columns: minmax(360px, 46%) minmax(0, 1fr);
+  width: 100%;
+  max-width: 1120px;
+  min-height: min(660px, calc(100svh - 80px));
+  margin: 0 auto;
+  padding: 0;
+  background: var(--background);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgb(22 13 118 / .13), 0 2px 6px rgb(34 34 34 / .08);
+}
+.app-shell.is-signed-out .login-header {
+  position: relative;
+  display: flex;
+  width: auto;
+  max-width: none;
+  min-height: 100%;
+  margin: 0;
+  padding: 3rem 2.5rem 7rem;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  background: #160d76;
+  text-align: center;
+  border-right: 6px solid var(--secondary);
+}
+.app-shell.is-signed-out .login-header::before {
+  position: absolute;
+  content: "";
+  inset: auto 0 0;
+  height: 38%;
+  background: url('/brand/login-pattern.svg') center bottom / cover no-repeat;
+  pointer-events: none;
+}
+.app-shell.is-signed-out .login-header .brand {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 340px);
+  padding: 0;
+  border: 0;
+}
+.app-shell.is-signed-out .login-header img { display: block; width: min(100%, 310px); height: auto; margin: 0 auto; }
+.app-shell.is-signed-out .login-header .brand p { margin: .8rem 0 0; color: #fffffa; font: 400 1.5rem/1.4 Cardo, Georgia, serif; }
+.app-shell.is-signed-out .login-space {
+  display: flex;
+  width: min(100%, 480px);
+  max-width: none;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 2.5rem 2rem;
+  align-self: center;
+  flex-direction: column;
+  justify-content: center;
+}
+.app-shell.is-signed-out .login-panel {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.app-shell.is-signed-out .login-panel h2 { margin: 0; font-size: 2rem; font-weight: 400; color: #160d76; }
+.app-shell.is-signed-out .login-panel .muted { margin: .55rem 0 0; color: #5b5b68; font-size: .95rem; line-height: 1.55; }
+.app-shell.is-signed-out .login-panel form { gap: 1.05rem; margin-top: 1.6rem; }
+.app-shell.is-signed-out .login-panel label { gap: .45rem; color: #28253e; font-size: .83rem; letter-spacing: .01em; }
+.app-shell.is-signed-out .login-panel input { min-height: 50px; padding: .72rem .85rem .72rem 2.6rem; border-color: #b8b6c8; box-shadow: 0 2px 4px rgb(22 13 118 / .07); background-repeat: no-repeat; background-position: .85rem center; background-size: 17px; }
+.app-shell.is-signed-out .login-panel input[autocomplete=username] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23757580' stroke-width='1.5'%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3Cpath d='M4 22v-3a8 8 0 0 1 16 0v3'/%3E%3C/svg%3E"); }
+.app-shell.is-signed-out .login-panel input[type=password] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23757580' stroke-width='1.5'%3E%3Crect x='5' y='10' width='14' height='11' rx='2'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3M12 14v3'/%3E%3C/svg%3E"); }
+.app-shell.is-signed-out .login-panel input:focus { border-color: #4094d9; box-shadow: 0 0 0 3px rgb(64 148 217 / .18); outline: 0; }
+.app-shell.is-signed-out .login-panel button[type=submit] { min-height: 50px; margin-top: .45rem; border-color: #160d76; border-bottom: 3px solid var(--accent); border-radius: 6px; background: #160d76; box-shadow: 0 4px 8px rgb(22 13 118 / .17); }
+.app-shell.is-signed-out .login-panel button[type=submit]:hover:not(:disabled) { background: #281d94; }
+.app-shell.is-signed-out .notice { width: 100%; margin: 0 0 1.2rem; border: 1px solid #f0c5bf; border-left: 4px solid #a12a22; border-radius: 6px; background: #fff3f1; color: #76231d; box-shadow: 0 2px 8px rgb(34 34 34 / .04); }
+.app-shell.is-signed-out .signed-out-notice { border-color: #d9d9e2; border-left-color: #7c7b8a; background: #f5f5f8; color: #3e3d4b; }
+.app-shell.is-signed-out > main > p[role=status] { margin: 0; color: #565663; }
+
+@media (max-width: 900px) {
+  body:has(.app-shell.is-signed-out) { padding: 24px; }
+  .app-shell.is-signed-out { display: block; padding: 0; max-width: 520px; min-height: 0; }
+  .app-shell.is-signed-out .login-header {
+    display: flex;
+    min-height: 180px;
+    padding: 2rem 1.5rem;
+    align-items: center;
+    justify-content: center;
+    border-right: 0;
+    border-bottom: 3px solid var(--secondary);
+  }
+  .app-shell.is-signed-out .login-header::before { inset: 0; width: auto; height: auto; background-size: cover; background-position: center; opacity: .65; }
+  .app-shell.is-signed-out .login-header .brand { background: var(--primary); border-radius: 4px; padding: .6rem; }
+  .app-shell.is-signed-out .login-header .brand { width: min(100%, 300px); }
+  .app-shell.is-signed-out .login-header img { width: 220px; }
+  .app-shell.is-signed-out .login-header .brand p { margin-top: .5rem; font-size: 1.2rem; }
+  .app-shell.is-signed-out .login-space { width: min(100%, 480px); padding: 2.5rem 1.5rem; }
+  .app-shell.is-signed-out .login-panel h2 { font-size: 1.7rem; }
+  .app-shell.is-signed-out .login-panel form { margin-top: 1.5rem; }
+}
+@media (max-width: 480px) {
+  body:has(.app-shell.is-signed-out) { padding: 16px; }
+  .app-shell.is-signed-out .login-header { min-height: 150px; padding: 1.25rem; justify-content: center; text-align: center; }
+  .app-shell.is-signed-out .login-header .brand { width: 230px; }
+  .app-shell.is-signed-out .login-header img { width: 190px; margin: 0 auto; }
+  .app-shell.is-signed-out .login-header .brand p { font-size: 1rem; }
+  .app-shell.is-signed-out .login-space { padding: 1.7rem 1.25rem 2rem; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  body:has(.app-shell.is-signed-out) { padding: 16px; }
+  .app-shell.is-signed-out { display: grid; max-width: 1120px; min-height: calc(100svh - 32px); grid-template-columns: minmax(220px, 38%) minmax(0, 1fr); }
+  .app-shell.is-signed-out .login-header { min-height: 100%; padding: 1.5rem 1.5rem 5rem; border-bottom: 0; border-right: 4px solid var(--secondary); }
+  .app-shell.is-signed-out .login-header::before { inset: auto 0 0; width: auto; height: 100px; background-size: cover; opacity: 1; }
+  .app-shell.is-signed-out .login-header img { width: 220px; }
+  .app-shell.is-signed-out .login-space { padding: .85rem 1.5rem; }
+  .app-shell.is-signed-out .login-panel h2 { font-size: 1.6rem; }
+  .app-shell.is-signed-out .login-panel .muted { margin-top: .35rem; font-size: .82rem; }
+  .app-shell.is-signed-out .notice { margin-bottom: .6rem; }
+  .app-shell.is-signed-out .login-panel form { gap: .6rem; margin-top: .75rem; }
+  .app-shell.is-signed-out .login-panel input { min-height: 44px; padding: .5rem .75rem .5rem 2.6rem; }
+  .app-shell.is-signed-out .login-panel button[type=submit] { min-height: 44px; padding: .5rem .75rem; }
+}
+
 /* Compact operational directories and date-first menu workspace. */
 .customers-workspace, .daily-menu-workspace { min-width: 0; }
 .customers-workspace .panel, .daily-menu-workspace .panel { border-color: #d9dce9; }

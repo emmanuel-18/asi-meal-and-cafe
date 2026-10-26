@@ -10,12 +10,13 @@ test("temporary-password sessions show the password-change form and no operation
   const jsx = (type, props) => ({type, props: props ?? {}});
   const code = ts.transpileModule(readFileSync(new URL("../src/components/meal-app.tsx", import.meta.url), "utf8"), {compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS}}).outputText;
   const exports = {};
-  new Function("require", "exports", code)(name => name === "react" ? react : name === "react/jsx-runtime" ? {jsx, jsxs: jsx} : name === "@/lib/api" ? {apiRequest: () => {}} : {default: () => null}, exports);
+  new Function("require", "exports", code)(name => name === "react" ? react : name === "react/jsx-runtime" ? {jsx, jsxs: jsx} : name === "@/lib/api" ? {apiRequest: () => {}} : name === "next/image" ? {default: "img"} : {default: () => null}, exports);
   const tree = exports.default(); const nodes = [];
   function visit(node) { if (!node || typeof node !== "object") return; if (Array.isArray(node)) return node.forEach(visit); nodes.push(node); visit(node.props.children); }
   visit(tree);
   assert.ok(nodes.some(node => node.type === "h2" && node.props.children === "Change your password"));
   assert.ok(nodes.some(node => node.type === "input" && node.props.name === "current_password"));
   assert.ok(nodes.some(node => node.type === "input" && node.props.name === "new_password"));
+  assert.ok(nodes.some(node => node.type === "img" && node.props.src === "/brand/asi-meal-logo-reversed.svg"));
   assert.ok(!nodes.some(node => typeof node.type === "function"));
 });

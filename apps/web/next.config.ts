@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
+const allowedDevOrigins = (process.env.ASI_ALLOWED_DEV_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const nextConfig: NextConfig = {
+  allowedDevOrigins,
   async rewrites() {
     const origin = new URL(process.env.ASI_API_ORIGIN ?? "http://127.0.0.1:43872");
     if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password ||
