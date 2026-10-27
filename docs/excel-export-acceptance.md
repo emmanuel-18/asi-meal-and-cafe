@@ -133,51 +133,98 @@ records were changed. Normal owner sign-in retained existing session/audit
 behavior. No unrelated Docker stack was rebuilt, and no commits or
 pushes were made. Stage 14G.4 has not begun.
 
-## Stage 14E.4A — focused print refinement
+## Stage 14E.4A ? focused print refinement
 
-Implementation and automated verification completed; final Excel visual acceptance
-is **incomplete** because Windows automation could not activate the listed Excel
-window. Initial activation and the documented refresh/recovery attempt both
-returned `failed to activate captured window`. The owner was asked to restore
-Excel. No print-preview, page-count or save/reopen success is inferred from tests.
+Implementation and automated checks are complete. Excel visual checks resumed
+after the owner restored Excel and enabled editing for the actual downloaded
+32-day workbook. Final save/reopen acceptance was completed on October 27, 2026.
+No security settings were changed or Protected View bypassed by automation.
 
-Changes:
+### Changes
 
-- The long-period Daily Sales ledger remains in A:M. Its date summary now uses
-  O:P on the same worksheet, with its own title, period, headers and period total.
-  Two disjoint print ranges isolate the sections; repeated row 5 resolves to
-  the correct columns for each section. Only column headings repeat, not titles.
-  Ledger lines, totals and SUMIF calculations are preserved with the summary's
-  date references updated to column O. The ledger AutoFilter stays in A:M.
-- ExcelJS emits duplicate scoped Print_Area names for disjoint print ranges.
-  The existing public ZIP postprocessor now combines them into a single
-  comma-separated union. Tests and the independent package verifier reject
-  duplicate scoped names. ExcelJS's reader exposes only the first area of a
-  union, so the complete definition is checked in workbook XML as well.
-- The SD employee-by-date matrix retains every date and snapshot row. Metadata
-  columns are narrower, date columns start at width 10.5 and expand for large
-  amounts, month groups occupy row 4 and day/month labels occupy row 5.
-  Legal landscape, 0.2-inch side margins, 100% print scale and 10-point cells
-  preserve readability. Employee number/name columns A:B and header rows 4:5
-  repeat; the running header names the exact period and continuation behavior.
-  Multiple horizontal pages are permitted. **Actual new horizontal page count
-  has not been measured in Excel**; the previous observed count was seven.
-- The greater-than-31-day SD transaction register and the one-page dashboard
-  print setting are unchanged. The 32-day register has automated structure,
-  nonzero-SD, snapshot and reconciliation coverage; its requested new visual
-  inspection and real-workbook save/reopen remain outstanding.
+- Daily Sales ledger remains A:M; its daily summary is now O:P with a separate
+  title, period, headers and total. Two disjoint print areas keep sections
+  separate. Row 5 repeats the appropriate headings for each area. Ledger
+  transactions, totals and SUMIF calculations are preserved.
+- The public JSZip postprocessor combines ExcelJS's duplicate scoped Print_Area
+  definitions into one OOXML union. Tests and the independent package verifier
+  check relationships and scoped-name uniqueness. No private ExcelJS API or
+  new dependency is used.
+- SD matrix metadata/date widths, month groups and day/month headings are more
+  compact. Legal landscape, 0.2-inch side margins, 100% scale and 10-point body
+  cells preserve readability. Columns A:B repeat employee number and name;
+  rows 4:5 repeat the disclaimer and date headers. The wide on-screen title
+  was visibly clipped on horizontal continuations, so the print area now
+  begins at row 4 and uses the running exact-period header. The disclaimer
+  fits A4:B4 at a 44-point row height. The on-screen title remains intact.
+- The greater-than-31-day SD transaction register and dashboard one-page
+  setting are unchanged. Financial logic and historical snapshots are unchanged.
 
-Final automated checks: **103 frontend tests passed**, zero failures/skips;
-ESLint, TypeScript and production build passed. Six freshly generated in-memory
-fixtures passed independent ZIP/XML, chart-reference and cached-value checks,
-including duplicate-name validation. No database was used for fixtures.
-Final fixtures: `exports/stage14e4a-final-fixtures-20261026/`.
+### Actual Microsoft Excel inspection
 
-Only the verified `asi-meal-dev` frontend image/container was rebuilt/reloaded
-on port 43873. API, gateway and PostgreSQL were preserved. No financial rules,
-business records, migrations, dependencies or unrelated work were changed.
+Final synthetic review workbook:
+`exports/stage14e4a-reviewed-20261026/monthly-review.xlsx`.
+Microsoft Print to PDF was selected for preview only; no print jobs were sent.
 
-Files changed in this stage:
+- SD matrix: **4 horizontal pages**, compared with the prior observed 7.
+  All four pages were examined. Employee numbers/names, date/month labels,
+  amounts, daily totals, period total and continuation footer are readable.
+  No clipped title fragments remain. This is intentionally not squeezed onto
+  one or two unreadably small pages. The final page contains day 31 and totals;
+  it is not an unexpected blank page. Page count can vary with printer metrics
+  and very large amounts that expand columns.
+- Daily Sales: all **5 pages** inspected (3 ledger, 2 summary). Ledger
+  continuations repeat only ledger headers; summary continuation repeats only
+  service date/recognized sales headers. Main titles do not repeat. Both
+  sections reconcile to the synthetic fixture's 2,520.00. No overlap or missing
+  rows observed. The summary retains the worksheet's shared ledger print scale
+  and consequently uses a small portion of its page.
+- Executive Dashboard: **1 A4 landscape page**, all four native charts and KPIs
+  visible without overlap or clipping.
+- Mode of Payment: **2 A4 landscape pages**, both inspected. Final date and total
+  continue on page 2 with appropriate column headers; all five methods and zero
+  reconciliation difference are preserved. This short continuation is existing
+  pagination, not an unexpected blank page.
+
+Actual browser-downloaded 32-day workbook from Stage 14E.4:
+`exports/stage14e4-acceptance-20261026/asi-meal-report-2026-09-25-to-2026-10-26.xlsx`.
+
+- Complete SD register examined: four employees with nonzero deductions,
+  four transactions, service dates/order references and recorded identity,
+  campaign, position and LOB columns. Long fields wrap without clipping.
+  SD amounts 355.00 + 280.00 + 50.00 + 340.00 = **1,025.00**.
+- SD Print Preview: **1 A4 landscape page**, complete header, rows and total.
+  Filters and frozen-pane structures are present; interactive filtering and
+  scrolling were not exercised during this pass.
+- Owner enabled editing. Excel full recalculation was invoked; Save As created
+  `exports/stage14e4a-reviewed-20261026/actual-32-day-excel-saved.xlsx` without
+  overwriting the download. The copy was closed and reopened in Excel.
+- Reopened copy: all four native charts render. Sales/allocations remain
+  **1,470.00**, Cash **445.00**, SD **1,025.00**, other methods zero and
+  reconciliation difference **0.00**. SD total formula remains
+  `ROUND(SUM(H6:H9),2)`. A file comparison using public ExcelJS reads verified
+  **1,353 populated cells**, formulas and cached results across all four sheets
+  match the original, resolving Excel's shared-formula serialization normally.
+- Excel's existing Document Recovery pane was present at next-day startup;
+  no recovery files were changed or discarded. The saved copy opened normally
+  without a workbook repair prompt.
+
+### Automated verification and deployment
+
+After the final title-clipping fix: **103 frontend tests passed**, no failures
+or skips. ESLint, TypeScript, production build and git diff --check passed.
+Six in-memory fixtures passed independent ZIP/XML, chart references, financial
+cached values and scoped-name validation. Final fixtures are under
+`exports/stage14e4a-reviewed-20261026/`; earlier artifact folders are not the
+final layout. No database was used to generate fixtures.
+
+Only the identified asi-meal-dev frontend was rebuilt/reloaded by this stage.
+API, gateway and PostgreSQL were not restarted by this work. Latest read-only
+checks on October 27: frontend and health 200, unauthenticated session/users
+401, docs/schema 404, untrusted login Origin 403. The identified development
+containers are healthy and the gateway serves HTTPS on port 43873.
+
+Files changed during this stage (unrelated work preserved):
 
 - `apps/web/src/lib/premium-excel.ts`
 - `apps/web/src/lib/excel-charts.ts`
@@ -185,18 +232,14 @@ Files changed in this stage:
 - `apps/web/scripts/verify-premium-package.py`
 - `docs/excel-export-acceptance.md`
 
-Outstanding owner/Excel acceptance:
+### Remaining acceptance limits
 
-1. Restore Excel, download fresh Monthly and 32-day Custom workbooks from the
-   development Reports page, and save them as new files.
-2. Preview both Daily Sales print ranges: only ledger headings above lines and
-   date/sales headings above summary dates. Check all continuation pages.
-3. Count monthly SD horizontal pages, check repeated employee identifiers and
-   date/month labels on every page, and confirm readable amounts.
-4. Inspect the 32-day register's complete rows, filters, frozen panes, totals
-   and Print Preview; confirm only nonzero employee deductions appear.
-5. Preview every worksheet, confirm the dashboard remains one page with four
-   charts, recalculate, Save As a copy, close/reopen the copy and recheck charts,
-   formulas and exact authoritative sales/allocation/SD totals.
-
-These checks are pending, not accepted. Do not start Stage 14G.4 on this evidence.
+Revised monthly layout was measured with synthetic in-memory fixtures; the real
+32-day SD register and save/reopen were tested using the existing authenticated
+Stage 14E.4 download. Fresh post-fix authenticated browser downloads were not
+repeated in this pass. All four worksheet print previews were inspected on the
+final synthetic monthly workbook, not every worksheet of a fresh real download.
+Interactive filters/frozen-pane behavior remains unexercised, though existing
+structure/tests and reopened values are preserved. Physical printer output was
+not tested. No database writes, financial-rule changes, migrations, dependency
+changes, commits or pushes were performed by this work. Stage 14G.4 was not begun.

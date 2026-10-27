@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import type { Session } from "@/lib/api";
 
 export const sections = ["Orders", "Menu", "Customers", "Reports", "Users", "Activity Logs"] as const;
 export type Section = typeof sections[number];
 
-function Icon({ name }: { name: Section | "Navigation" | "Close" | "Sign out" }) {
+function Icon({ name }: { name: Section | "Navigation" | "Close" | "Sign out" | "Collapse" }) {
   const paths: Record<typeof name, React.ReactNode> = {
     Orders: <><path d="M5 3h14v18l-3-2-4 2-4-2-3 2z"/><path d="M8 8h8M8 12h8"/></>,
     Menu: <><path d="M4 3v7a3 3 0 0 0 6 0V3M7 3v18M17 3c-2 2-3 5-3 8h4V3zM18 11v10"/></>,
@@ -17,6 +18,7 @@ function Icon({ name }: { name: Section | "Navigation" | "Close" | "Sign out" })
     Navigation: <path d="M4 6h16M4 12h16M4 18h16"/>,
     Close: <path d="M5 5l14 14M19 5 5 19"/>,
     "Sign out": <><path d="M10 4H5v16h5M14 8l4 4-4 4M8 12h10"/></>,
+    Collapse: <><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M16 9l-3 3 3 3"/></>,
   };
   return <svg aria-hidden="true" className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
@@ -29,6 +31,7 @@ export default function AppNavigation({ session, section, onSelect, onLogout, bu
   const navigating = useRef(false);
   const oldOverflow = useRef("");
   const locked = useRef(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   function open() {
     if (!dialog.current || dialog.current.open) return;
@@ -56,16 +59,24 @@ export default function AppNavigation({ session, section, onSelect, onLogout, bu
     return () => { media.removeEventListener("change", resize); if (locked.current) document.body.style.overflow = oldOverflow.current; };
   }, []);
 
+  function brand(compact: boolean, fromDrawer: boolean) {
+    return <button type="button" className={`app-brand${compact ? " app-brand-compact" : ""}`} aria-label="ASI Meal Management — Orders" title="Go to Orders" onClick={() => select("Orders", fromDrawer)}>
+      <Image className="brand-horizontal" src="/brand/asi-meal-logo-reversed.svg" width={236} height={58} alt="ASI Meal" priority />
+      <Image className="brand-symbol" src="/brand/asi-meal-symbol-reversed.svg" width={44} height={44} alt="" aria-hidden="true" />
+    </button>;
+  }
   function content(fromDrawer: boolean) {
-    return <><div className="sidebar-brand">ASI Meal Management</div>
+    return <><div className="sidebar-brand">{brand(!fromDrawer && collapsed, fromDrawer)}</div>
       <nav className="sidebar-nav" aria-label="Application">{sections.filter(name => !["Users", "Activity Logs"].includes(name) || session.user.role === "super_admin").map(name => <button type="button" key={name}
-        aria-current={section === name ? "page" : undefined} onClick={() => select(name, fromDrawer)}><Icon name={name}/><span>{name}</span></button>)}</nav>
+        title={name} aria-current={section === name ? "page" : undefined} onClick={() => select(name, fromDrawer)}><Icon name={name}/><span>{name}</span></button>)}</nav>
       <div className="sidebar-account"><span>{session.user.display_name}<small>{session.user.role === "super_admin" ? "Super Admin" : session.user.role === "admin" ? "Admin" : "Assistant Admin"}</small></span>
-        <button type="button" onClick={onLogout} disabled={busy}><Icon name="Sign out"/>Sign out</button></div></>;
+        <button type="button" title="Sign out" onClick={onLogout} disabled={busy}><Icon name="Sign out"/><span>Sign out</span></button></div></>;
   }
 
-  return <><aside className="desktop-sidebar">{content(false)}</aside>
-    <header className="mobile-header"><strong>ASI Meal Management</strong><button type="button" ref={trigger} onClick={open} aria-haspopup="dialog" aria-controls="navigation-drawer"><Icon name="Navigation"/>Menu</button></header>
+  return <><aside className="desktop-sidebar" data-collapsed={collapsed}>{content(false)}
+      <button type="button" className="sidebar-collapse" onClick={() => setCollapsed(value => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}><Icon name="Collapse"/><span>Collapse sidebar</span></button>
+    </aside>
+    <header className="mobile-header">{brand(true, false)}<button type="button" ref={trigger} onClick={open} aria-haspopup="dialog" aria-controls="navigation-drawer"><Icon name="Navigation"/>Menu</button></header>
     <dialog id="navigation-drawer" ref={dialog} className="navigation-drawer" aria-label="Application navigation" onClose={closed}>
       <button type="button" className="drawer-close" onClick={() => dialog.current?.close()} autoFocus><Icon name="Close"/>Close</button>
       {content(true)}

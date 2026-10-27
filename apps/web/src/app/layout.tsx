@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ASI Meal Management",
   description: "Internal meal management workspace for ASI Meal.",
+  applicationName: "ASI Meal Management",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
