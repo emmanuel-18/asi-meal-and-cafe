@@ -5,6 +5,7 @@ No credentials, DSNs or employee records are written to fixture files.
 """
 
 import os
+import json
 from decimal import Decimal
 from datetime import timedelta
 from pathlib import Path
@@ -213,15 +214,17 @@ def test_real_next_proxy_session_orders_and_csrf(auth_env):
             assert client.patch(f"/api/orders/{order_id}", json={"expected_version": 1, "allocations": [
                 {"category": "cash", "amount": "1.00"}]}, headers=h).status_code == 422
             assert client.patch(f"/api/orders/{order_id}", json={"expected_version": 1, "allocations": []}, headers=h).json()["version"] == 2
-            assert client.post(f"/api/orders/{order_id}/received", json={"expected_version": 2}, headers=h).status_code == 422
-            assert client.patch(f"/api/orders/{order_id}", json={"expected_version": 2, "allocations": [
-                {"category": "finance", "amount": menu["items"][0]["unit_price"]}]}, headers=h).json()["version"] == 3
-            assert client.post(f"/api/orders/{order_id}/received", json={"expected_version": 3}, headers=h).status_code == 200
-            assert client.post(f"/api/orders/{order_id}/received", json={"expected_version": 3}, headers=h).status_code == 409
+            # Approved visitor workflow fills Finance from recorded item totals.
+            received = client.post(f"/api/orders/{order_id}/received", json={"expected_version": 2}, headers=h)
+            assert received.status_code == 200 and received.json()["version"] == 3
+            fresh = client.get(f"/api/orders/{order_id}").json()
+            assert [(a["category"], a["amount"]) for a in fresh["allocations"]] == [
+                ("finance", menu["items"][0]["unit_price"])]
+            assert client.post(f"/api/orders/{order_id}/received", json={"expected_version": 2}, headers=h).status_code == 409
             with engine.begin() as connection:
                 sql(connection, "UPDATE users SET role_code='assistant_admin' WHERE id=:id", id=g["actor"])
             assert client.get("/auth/me").json()["user"]["role"] == "assistant_admin"
-            correction = {"expected_version": 4, "reason_code": "mistaken_click", "acknowledged": True}
+            correction = {"expected_version": 3, "reason_code": "mistaken_click", "acknowledged": True}
             assert client.post(f"/api/orders/{order_id}/reverse-received", json=correction, headers=h).status_code == 403
             with engine.begin() as connection:
                 sql(connection, "UPDATE users SET role_code='admin' WHERE id=:id", id=g["actor"])
@@ -269,6 +272,61 @@ def test_real_next_proxy_session_orders_and_csrf(auth_env):
                 assert client.get(f"/api/menus/by-date/{days[0]}").json()["id"] == g["menu"]
             assert client.get("/api/employees", params={"q": "000042"}).status_code == 200
             assert client.post("/api/employees/import", content=csv_data, headers=csv_headers).status_code == 403
+            # Stage 15: real HTTP proxy -> PostgreSQL -> complete export bundle
+            # -> actual XLSX package, with no fixture JSON written to disk.
+            with engine.begin() as connection:
+                sql(connection, "UPDATE users SET role_code='admin' WHERE id=:id", id=g["actor"])
+                sql(connection, "UPDATE item_categories SET default_unit_price=50.01 WHERE code='vegetable'")
+            acceptance_day = "2048-01-06"
+            response = client.post("/api/menus", headers=h, json={"dish_ids": g["dishes"][:2],
+                "include_default_rice": True, "assignments": [{"service_date": acceptance_day, "expected_menu_id": None}]})
+            assert response.status_code == 201
+            acceptance_menu = response.json()
+            assert [i["category_code"] for i in acceptance_menu["items"]].count("extra_rice") == 1
+            payment_amounts = {"cash": "10.01", "gcash": "20.02", "sd": "100.00", "incentive": "40.00", "finance": "70.00"}
+            body = {"request_key": str(uuid4()), "service_date": acceptance_day, "menu_id": acceptance_menu["id"],
+                "employee_number": "000042", "items": [{"menu_item_id": i["id"], "quantity": 3 if i["category_code"] == "vegetable" else 1}
+                    for i in acceptance_menu["items"]],
+                "allocations": [{"category": category, "amount": amount} for category, amount in payment_amounts.items()]}
+            created = client.post("/api/orders", headers=h, json=body)
+            assert created.status_code == 201 and created.json()["total"] == "240.03"
+            accepted_id = created.json()["order_id"]
+            assert client.post("/api/orders", headers=h, json=body).json() == created.json()
+            assert client.post("/api/orders", headers=h, json=body | {"allocations": []}).status_code == 409
+            pending = client.post("/api/orders", headers=h, json=body | {"request_key": str(uuid4()), "allocations": []})
+            assert pending.status_code == 201
+            assert client.post(f'/api/orders/{pending.json()["order_id"]}/received', headers=h, json={"expected_version": 1}).status_code == 422
+            assert client.post(f"/api/orders/{accepted_id}/received", headers=h, json={"expected_version": 1}).status_code == 200
+            assert client.post(f"/api/orders/{accepted_id}/received", headers=h, json={"expected_version": 1}).status_code == 409
+            # A current-version retry is a no-op, not a second receipt event.
+            assert client.post(f"/api/orders/{accepted_id}/received", headers=h, json={"expected_version": 2}).json()["version"] == 2
+            vegetable = next(i for i in acceptance_menu["items"] if i["category_code"] == "vegetable")
+            guest = client.post("/api/orders", headers=h, json={"request_key": str(uuid4()), "service_date": acceptance_day,
+                "menu_id": acceptance_menu["id"], "visitor_id": visitor.json()["id"],
+                "items": [{"menu_item_id": vegetable["id"], "quantity": 1}], "allocations": []})
+            assert guest.status_code == 201
+            guest_id = guest.json()["order_id"]
+            assert client.post(f"/api/orders/{guest_id}/received", headers=h, json={"expected_version": 1}).status_code == 200
+            for query in ({"mode": "daily", "day": acceptance_day}, {"mode": "weekly", "day": acceptance_day},
+                          {"mode": "monthly", "year": 2048, "month": 1},
+                          {"mode": "custom", "start": acceptance_day, "end": "2048-02-06"}):
+                exported = client.get("/api/reports/bundle", params=query | {"include_export_details": "true", "q": "no-match", "limit": 1}).json()
+                assert exported["sales"]["recognized_sales"] == exported["payments"]["total"] == "290.04"
+                assert exported["sales"]["received_order_count"] == 2
+                assert exported["salary_deduction"]["total"] == "100.00"
+                assert [e["employee_number"] for e in exported["salary_deduction"]["employees"]] == ["000042"]
+                expected = payment_amounts | {"finance": "120.01"}
+                assert {a["category"]: a["amount"] for a in exported["payments"]["totals"]} == expected
+                assert {o["order_id"] for o in exported["export_details"]["orders"]} == {accepted_id, guest_id}
+                verify_export_workbook(node, web, exported, query["mode"])
+            for path in ("/api/users", "/api/activity"):
+                assert client.get(path).status_code == 403
+            with engine.begin() as connection:
+                assert sql(connection, "SELECT count(*) FROM receipt_events WHERE order_id=:id", id=accepted_id).scalar_one() == 1
+                sql(connection, "UPDATE users SET role_code='super_admin' WHERE id=:id", id=g["actor"])
+            activity = client.get("/api/activity", params={"entity": "orders", "reference": str(accepted_id)}).json()["items"]
+            assert {a["action"] for a in activity} == {"order_created", "received_marked"}
+            assert all(a["actor_id"] == g["actor"] for a in activity)
             assert client.post("/auth/logout", headers=h).status_code == 204
             assert client.get("/auth/me").status_code == 401
             assert client.get("/api/reports/bundle", params={"mode": "daily", "day": demo_day}).status_code == 401
@@ -286,3 +344,29 @@ def test_real_next_proxy_session_orders_and_csrf(auth_env):
         server.should_exit = True
         thread.join(timeout=15)
         api_socket.close()
+
+
+def verify_export_workbook(node, web, bundle, mode):
+    """Feed only synthetic API reporting data to the existing Excel implementation."""
+    script = r"""
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
+import { buildPremiumExcel } from './src/lib/premium-excel.ts';
+let input = ''; for await (const part of process.stdin) input += part;
+const { bundle, mode } = JSON.parse(input);
+const bytes = await buildPremiumExcel(bundle, mode);
+const book = new ExcelJS.Workbook(); await book.xlsx.load(bytes);
+assert.deepEqual(book.worksheets.map(s => s.name), ['Executive Dashboard','Daily Sales','Salary Deduction List','Mode of Payment']);
+assert.equal(book.worksheets[0].getCell('A5').result, 290.04);
+const sd = book.getWorksheet('Salary Deduction List');
+const sdIds = []; sd.eachRow(row => row.eachCell(cell => { if (cell.value === '000042') { assert.equal(cell.type, ExcelJS.ValueType.String); sdIds.push(cell.value); } }));
+assert.ok(sdIds.length > 0);
+const zip = await JSZip.loadAsync(bytes, { checkCRC32: true });
+assert.equal(Object.keys(zip.files).filter(p => /^xl\/charts\/chart\d+\.xml$/.test(p)).length, 4);
+for (const sheet of book.worksheets) assert.ok(sheet.pageSetup.printArea);
+"""
+    result = subprocess.run([node, "--input-type=module", "-e", script], cwd=web,
+        input=json.dumps({"bundle": bundle, "mode": mode}), text=True, capture_output=True, timeout=30,
+        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    assert result.returncode == 0, f"Synthetic API-to-workbook verification failed: {result.stderr}"

@@ -1,0 +1,6 @@
+# Candidate override ONLY. Requires separate owner-approved role/config cutover.
+# This file is not automatically selected by `docker compose up`.
+services:
+  api:
+    environment:
+      ASI_DATABASE_URL: "postgresql+psycopg://asi_meal_api:${DEV_API_DB_PASSWORD:?Set the approved private URL-safe runtime password in the existing ignored .env}@db:5432/asi_meal_dev"

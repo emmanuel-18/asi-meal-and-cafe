@@ -84,6 +84,17 @@ remote firewall reachability.
 
 ## Data and migrations
 
+Current-stack backup commands, verified restore evidence, retention guidance and
+recovery procedures are in [Stage 15.2 backup and recovery](../../docs/stage15-backup-recovery.md).
+From the project root, run `.\.venv\Scripts\python.exe infra/dev/backup.py --restore-drill`
+for an explicit private backup and isolated restore check; it does not restart
+services or write business records. No recurring backup is configured.
+
+The [Stage 15.3 operational review](../../docs/stage15-operational-readiness.md)
+contains tested candidate runtime grants and an **inactive** `compose.runtime.yaml`
+override. Do not apply it or change live roles/credentials until the owner
+approves the documented cutover. Current daily commands still use the base file.
+
 `asi-meal-dev_dev_postgres` persists across `down`, rebuilds and reboots. Never
 use `down -v`, prune its volume, or run a reset. No migration runs automatically.
 Accounts retain their existing passwords, roles and first-login requirements.
